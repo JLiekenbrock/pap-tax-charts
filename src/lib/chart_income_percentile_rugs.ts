@@ -4,8 +4,10 @@ export type IncomePercentileMarker = { readonly p: number; readonly eur: number 
 
 export type IncomePercentileRugOptions = {
   enabled: boolean
-  rangeMin: number
-  rangeMax: number
+  /** Lower x bound for rug EUR (linear: often 0; log: must be &gt; 0). */
+  clipXMinEur: number
+  /** Upper x bound for rug EUR. */
+  clipXMaxEur: number
   markers: ReadonlyArray<IncomePercentileMarker>
   /**
    * When x is a category axis, pass RE4 values in label order (same as chart data labels).
@@ -41,7 +43,7 @@ function xPixelForIncome(
   const xScale = chart.scales.x
   if (!xScale) return null
 
-  if (xScale.type === 'linear') {
+  if (xScale.type === 'linear' || xScale.type === 'logarithmic') {
     if (eur < lo || eur > hi) return null
     return xScale.getPixelForValue(eur)
   }
@@ -66,8 +68,8 @@ export function createIncomePercentileRugsPlugin(opts: IncomePercentileRugOption
       const { ctx, chartArea } = chart
       if (!xScale || chartArea == null) return
 
-      const lo = Math.max(0, Math.min(opts.rangeMin, opts.rangeMax))
-      const hi = Math.max(lo, opts.rangeMax)
+      const lo = Math.max(0, Math.min(opts.clipXMinEur, opts.clipXMaxEur))
+      const hi = Math.max(lo, opts.clipXMaxEur)
 
       const rugUp = 11
       const xs: number[] = []
@@ -93,7 +95,7 @@ export function createIncomePercentileRugsPlugin(opts: IncomePercentileRugOption
       ctx.font = '9px Inter, system-ui, sans-serif'
       ctx.fillStyle = LABEL
       ctx.textBaseline = 'bottom'
-      const labelPts = opts.markers.filter((m) => [10, 50, 90].includes(m.p))
+      const labelPts = opts.markers.filter((m) => [10, 50, 90, 95, 99].includes(m.p))
       let lastX = -1e9
       for (const m of labelPts) {
         const x = xPixelForIncome(chart, m.eur, lo, hi, opts.categoryIncomes)

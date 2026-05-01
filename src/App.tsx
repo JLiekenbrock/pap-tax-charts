@@ -1,6 +1,6 @@
 import React from 'react'
 import TaxInput, { PapExplorerSettings } from './components/TaxInput'
-import TaxChart, { ChartMetric, ChartMode, RateBasis, toPapOptions } from './components/TaxChart'
+import TaxChart, { CHART_LOG_SALARY_AXIS_MIN_EUR, ChartMetric, ChartMode, RateBasis, toPapOptions } from './components/TaxChart'
 import ChartControls from './components/ChartControls'
 import Results, { type PapChartYear } from './components/Results'
 import PrivilegeCheck from './components/PrivilegeCheck'
@@ -27,14 +27,15 @@ function papSnapshotAtIncome(settings: PapExplorerSettings, year: number): PapCa
   return calculatePapResultFromRE4(settings.income, opts)
 }
 
-function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
+function buildSeries(settings: PapExplorerSettings, logScaleX: boolean): PapCalculationResult[] {
   const min = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
   const max = Math.max(min, settings.rangeMax)
-  const step = (max - min) / (SERIES_POINTS - 1)
+  const effMin = logScaleX ? Math.max(CHART_LOG_SALARY_AXIS_MIN_EUR, min || CHART_LOG_SALARY_AXIS_MIN_EUR) : min
+  const step = (max - effMin) / (SERIES_POINTS - 1)
   const opts = toPapOptions(settings)
 
   return Array.from({ length: SERIES_POINTS }, (_, index) => {
-    const income = Math.round(min + step * index)
+    const income = Math.round(effMin + step * index)
     if (settings.filing === 'married') {
       return calculatePapForMarriedHouseholdTotal(income, settings.income1, settings.income2, opts)
     }
@@ -80,6 +81,7 @@ export default function App() {
   const [investmentInRates, setInvestmentInRates] = React.useState(true)
   const [marriedSocialSplit, setMarriedSocialSplit] = React.useState(false)
   const [showDestatisIncomePercentiles, setShowDestatisIncomePercentiles] = React.useState(true)
+  const [chartLogScaleX, setChartLogScaleX] = React.useState(false)
   const [yearCompareEnabled, setYearCompareEnabled] = React.useState(false)
   const [compareYearA, setCompareYearA] = React.useState<PapChartYear>(2025)
   const [compareYearB, setCompareYearB] = React.useState<PapChartYear>(2026)
@@ -118,6 +120,12 @@ export default function App() {
     }
   }, [settings, stklDerivation])
 
+  React.useEffect(() => {
+    if (chartMode === 'stacked' || chartMode === 'percent') {
+      setChartLogScaleX(false)
+    }
+  }, [chartMode])
+
   const papOpts = React.useMemo(() => toPapOptions(normalizedSettings), [normalizedSettings])
 
   const current = React.useMemo(() => {
@@ -129,7 +137,12 @@ export default function App() {
     }
     return calculatePapResultFromRE4(normalizedSettings.income, papOpts)
   }, [normalizedSettings, papOpts])
-  const series = React.useMemo(() => buildSeries(normalizedSettings), [normalizedSettings])
+  const logScaleXForSeries =
+    chartLogScaleX && chartMode !== 'stacked' && chartMode !== 'percent'
+  const series = React.useMemo(
+    () => buildSeries(normalizedSettings, logScaleXForSeries),
+    [normalizedSettings, logScaleXForSeries],
+  )
 
   const resultCompareA = React.useMemo(
     () =>
@@ -201,6 +214,8 @@ export default function App() {
             onMarriedSocialSplitChange={setMarriedSocialSplit}
             showDestatisIncomePercentiles={showDestatisIncomePercentiles}
             onShowDestatisIncomePercentilesChange={setShowDestatisIncomePercentiles}
+            chartLogScaleX={chartLogScaleX}
+            onChartLogScaleXChange={setChartLogScaleX}
           />
           <TaxChart
             series={series}
@@ -214,6 +229,7 @@ export default function App() {
             investmentInRates={investmentInRates}
             marriedSocialSplit={marriedSocialSplit}
             showDestatisIncomePercentiles={showDestatisIncomePercentiles}
+            showLogScaleX={chartLogScaleX}
           />
           <Results
             result={current}

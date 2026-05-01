@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DESTATIS_CHART_INCOME_RUG_MARKERS_2024,
   crossBandModelLadder,
   crossBandWeightedEmployeeSocialRef,
   employeeSocialPercentOnSalary,
@@ -61,6 +62,18 @@ describe('Destatis income ladder', () => {
 
   it('maps P10 cutoff to ~10th percentile', () => {
     expect(individualIncomePercentileDeStatis(32_526)).toBeCloseTo(10, 5)
+  })
+})
+
+describe('Destatis chart rug markers', () => {
+  it('keeps official deciles below p90 then integer p90–p99 with linear EUR between p91–p98', () => {
+    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.length).toBe(8 + 10)
+    const p90 = DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 90)!
+    const p99 = DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 99)!
+    expect(p90.eur).toBe(97_680)
+    expect(p99.eur).toBe(213_286)
+    const p95 = DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 95)!
+    expect(p95.eur).toBe(Math.round(97_680 + (5 / 9) * (213_286 - 97_680)))
   })
 })
 

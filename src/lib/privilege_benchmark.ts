@@ -69,6 +69,27 @@ export const DESTATIS_FULLTIME_WAGE_PERCENTILES_2024: ReadonlyArray<{ readonly p
 export const DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 =
   DESTATIS_FULLTIME_WAGE_PERCENTILES_2024[DESTATIS_FULLTIME_WAGE_PERCENTILES_2024.length - 1]!.eur
 
+/**
+ * Chart rugs only: official markers for p10–p80, then p90–p99 by integer percentiles.
+ * EUR for p91–p98 is linearly interpolated between published p90 and p99 (Destatis only publishes deciles
+ * up to p90 there). Peer stats still use {@link DESTATIS_FULLTIME_WAGE_PERCENTILES_2024}.
+ */
+export const DESTATIS_CHART_INCOME_RUG_MARKERS_2024: ReadonlyArray<{ readonly p: number; readonly eur: number }> =
+  (() => {
+    const pts = DESTATIS_FULLTIME_WAGE_PERCENTILES_2024
+    const head = pts.filter((m) => m.p < 90)
+    const p90 = pts.find((m) => m.p === 90)!
+    const p99 = pts.find((m) => m.p === 99)!
+    const tail: { p: number; eur: number }[] = []
+    for (let p = 90; p <= 99; p++) {
+      tail.push({
+        p,
+        eur: Math.round(p90.eur + ((p - p90.p) / (p99.p - p90.p)) * (p99.eur - p90.eur)),
+      })
+    }
+    return [...head, ...tail]
+  })()
+
 const DESTATIS_FT_GROSS_ANNUAL_2024 = DESTATIS_FULLTIME_WAGE_PERCENTILES_2024
 
 export const PRIVILEGE_INCOME_SOURCE_LABEL =

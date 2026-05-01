@@ -14,6 +14,8 @@ type Props = {
   onMarriedSocialSplitChange?: (next: boolean) => void
   showDestatisIncomePercentiles: boolean
   onShowDestatisIncomePercentilesChange: (next: boolean) => void
+  chartLogScaleX: boolean
+  onChartLogScaleXChange: (next: boolean) => void
 }
 
 const MODES: Array<{ value: ChartMode; label: string }> = [
@@ -36,6 +38,8 @@ export default function ChartControls({
   onMarriedSocialSplitChange,
   showDestatisIncomePercentiles,
   onShowDestatisIncomePercentilesChange,
+  chartLogScaleX,
+  onChartLogScaleXChange,
 }: Props) {
   const toggleMetric = (metric: ChartMetric) => {
     if (metrics.includes(metric)) {
@@ -77,6 +81,20 @@ export default function ChartControls({
               Per ZVE
             </button>
           </div>
+        </div>
+      )}
+
+      {chartMode !== 'stacked' && chartMode !== 'percent' && (
+        <div className="chart-controls-row">
+          <div className="chart-controls-label">X scale</div>
+          <label className="checkbox-row metric-option">
+            <input
+              type="checkbox"
+              checked={chartLogScaleX}
+              onChange={(e) => onChartLogScaleXChange(e.target.checked)}
+            />
+            Logarithmic salary (RE4) axis
+          </label>
         </div>
       )}
 
