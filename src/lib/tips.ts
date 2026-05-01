@@ -22,6 +22,8 @@ export type TipInputs = {
   partner1Income?: number
   /** Earnings of partner 2. */
   partner2Income?: number
+  /** When true (Beamter profile), skip tips that assume full Angestellten SV. */
+  beamtenMode?: boolean
 }
 
 /**
@@ -46,7 +48,13 @@ function counterfactual(
   return calculatePapResultFromRE4(income, merged)
 }
 
-export function computeTips({ result, options, partner1Income, partner2Income }: TipInputs): Tip[] {
+export function computeTips({
+  result,
+  options,
+  partner1Income,
+  partner2Income,
+  beamtenMode = false,
+}: TipInputs): Tip[] {
   const tips: Tip[] = []
   const filing = options.filing ?? 'single'
   const children = options.children ?? 0
@@ -206,6 +214,18 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
         tone: 'serious',
       })
     }
+  }
+
+  // Verbeamtung — different SV path (no RV/AV on Besoldung; PKV + Beihilfe typical).
+  if (!beamtenMode && result.income >= 45_000) {
+    tips.push({
+      id: 'verbeamtung',
+      emoji: '📜',
+      title: 'Verbeamtung (civil service appointment)',
+      description:
+        'Many teachers, police, and administrative roles use a Beamtenverhältnis: Besoldung usually carries no employee pension or unemployment insurance; health is typically PKV with Beihilfe rather than GKV. Lohnsteuer, Soli, and Kirchensteuer still apply. Turn on the Beamter option here to approximate the lower social burden in this PAP slice. Real eligibility, Probezeit, and tenure rules depend on the Dienstherren and Bundesland.',
+      tone: 'serious',
+    })
   }
 
   // ---- Cheeky lifestyle suggestions --------------------------------------

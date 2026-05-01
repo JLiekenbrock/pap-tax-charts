@@ -76,6 +76,23 @@ describe('tips: have children', () => {
   })
 })
 
+describe('tips: verbeamtung', () => {
+  it('appears for employees above income threshold', () => {
+    expect(ids(tipsFor(60_000))).toContain('verbeamtung')
+  })
+
+  it('is hidden when beamtenMode is enabled', () => {
+    const options = { ...baseOptions }
+    const result = calculatePapResultFromRE4(60_000, options)
+    const t = computeTips({ result, options, beamtenMode: true })
+    expect(ids(t)).not.toContain('verbeamtung')
+  })
+
+  it('is silent below threshold', () => {
+    expect(ids(tipsFor(40_000))).not.toContain('verbeamtung')
+  })
+})
+
 describe('tips: church exit', () => {
   it('appears when church rate is non-zero', () => {
     const t = tipsFor(60_000, { churchRate: 0.09 })

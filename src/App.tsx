@@ -253,9 +253,10 @@ export default function App() {
           <PrivilegeCheck result={current} settings={normalizedSettings} />
           <TaxTips
             result={current}
-            options={normalizedSettings}
+            options={papOpts}
             partner1Income={normalizedSettings.income1}
             partner2Income={normalizedSettings.income2}
+            beamtenMode={normalizedSettings.beamtenMode}
           />
           <Glossary />
         </div>

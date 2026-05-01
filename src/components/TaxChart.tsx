@@ -138,6 +138,21 @@ function formatPercent(value: number) {
   return `${Number(value).toFixed(2)}%`
 }
 
+/** Short axis labels for log salary scale (avoids long locale strings colliding at the right). */
+function formatCompactSalaryAxisEur(eur: number): string {
+  const v = Math.round(eur)
+  if (!Number.isFinite(v)) return ''
+  const av = Math.abs(v)
+  if (av >= 1_000_000) {
+    const m = av / 1_000_000
+    const t = m >= 100 ? Math.round(m) : Math.round(m * 10) / 10
+    const s = t % 1 === 0 ? String(Math.round(t)) : String(t).replace(/\.0$/, '')
+    return `${s}M`
+  }
+  if (av >= 10_000) return `${Math.round(av / 1_000)}k`
+  return `${av}`
+}
+
 /** Minimum RE4 on chart when x-axis is logarithmic (must be &gt; 0; 10k avoids wasting width on 1k–10k). */
 export const CHART_LOG_SALARY_AXIS_MIN_EUR = 10_000
 
@@ -623,15 +638,34 @@ export default function TaxChart({
           display: !isCategoryX,
           drawBorder: true,
         },
-        ticks: {
-          maxTicksLimit: 8,
-          autoSkip: true,
-          autoSkipPadding: 12,
-          callback: (value: string | number) => {
-            const tickValue = isCategoryX ? series[Number(value)]?.income ?? value : value
-            return Number(tickValue).toLocaleString()
-          },
-        },
+        ticks: isCategoryX
+          ? {
+              maxTicksLimit: 8,
+              autoSkip: true,
+              autoSkipPadding: 12,
+              callback: (value: string | number) => {
+                const tickValue = series[Number(value)]?.income ?? value
+                return Number(tickValue).toLocaleString()
+              },
+            }
+          : logScaleXActive
+            ? {
+                maxTicksLimit: 6,
+                autoSkip: true,
+                autoSkipPadding: 32,
+                maxRotation: 0,
+                minRotation: 0,
+                callback: (value: string | number) => {
+                  const n = Number(value)
+                  return Number.isFinite(n) ? formatCompactSalaryAxisEur(n) : String(value)
+                },
+              }
+            : {
+                maxTicksLimit: 8,
+                autoSkip: true,
+                autoSkipPadding: 12,
+                callback: (value: string | number) => Number(value).toLocaleString(),
+              },
       },
       y: {
         display: mode !== 'percent' && mode !== 'rates' && mode !== 'decomposition',

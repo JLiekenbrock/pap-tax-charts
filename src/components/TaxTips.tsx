@@ -7,6 +7,7 @@ type Props = {
   options: PapOptions
   partner1Income?: number
   partner2Income?: number
+  beamtenMode?: boolean
 }
 
 const toneClass: Record<Tip['tone'], string> = {
@@ -15,10 +16,10 @@ const toneClass: Record<Tip['tone'], string> = {
   absurd: 'tip-card tip-absurd',
 }
 
-export default function TaxTips({ result, options, partner1Income, partner2Income }: Props) {
+export default function TaxTips({ result, options, partner1Income, partner2Income, beamtenMode }: Props) {
   const tips = React.useMemo(
-    () => computeTips({ result, options, partner1Income, partner2Income }),
-    [result, options, partner1Income, partner2Income],
+    () => computeTips({ result, options, partner1Income, partner2Income, beamtenMode }),
+    [result, options, partner1Income, partner2Income, beamtenMode],
   )
 
   if (tips.length === 0) {
