@@ -45,6 +45,17 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
           Income
           <input type="number" value={settings.income} min={0} step={1000} onChange={(e) => update('income', numberValue(e.target.value))} />
         </label>
+        <input
+          className="income-slider"
+          type="range"
+          aria-label="Income slider"
+          value={settings.income}
+          min={settings.rangeMin}
+          max={settings.rangeMax}
+          step={100}
+          onInput={(e) => update('income', numberValue(e.currentTarget.value))}
+          onChange={(e) => update('income', numberValue(e.target.value))}
+        />
         <div className="two-col">
           <label>
             Min
@@ -125,6 +136,12 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
           <button type="button" className={chartMode === 'stacked' ? 'active' : ''} onClick={() => onChartModeChange('stacked')}>
             Stacked
           </button>
+          <button type="button" className={chartMode === 'percent' ? 'active' : ''} onClick={() => onChartModeChange('percent')}>
+            Percent
+          </button>
+          <button type="button" className={chartMode === 'rates' ? 'active' : ''} onClick={() => onChartModeChange('rates')}>
+            Rates
+          </button>
         </div>
       </div>
 
@@ -133,7 +150,7 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
         <div className="metric-grid">
           {CHART_METRICS.map((metric) => (
             <label key={metric.key} className="checkbox-row metric-option">
-              <input type="checkbox" checked={metrics.includes(metric.key)} disabled={chartMode === 'stacked'} onChange={() => toggleMetric(metric.key)} />
+              <input type="checkbox" checked={metrics.includes(metric.key)} disabled={chartMode !== 'lines'} onChange={() => toggleMetric(metric.key)} />
               {metric.label}
             </label>
           ))}

@@ -111,6 +111,12 @@ select:focus {
   border-color: #0f766e;
 }
 
+.income-slider {
+  accent-color: #111827;
+  padding: 0;
+  margin: 0 0 14px;
+}
+
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -144,7 +150,7 @@ select:focus {
 
 .segmented-control {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   padding: 4px;
   border: 1px solid #d1d5db;
@@ -196,6 +202,12 @@ select:focus {
   display: block;
   margin-top: 4px;
   font-size: 24px;
+}
+
+.result-toggle {
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
 }
 
 dl {

@@ -6,11 +6,13 @@ function eur(value: number) {
 }
 
 export default function Results({ result }: { result: PapCalculationResult }) {
-  const effective = result.income > 0 ? (result.tax / result.income) * 100 : 0
+  const [includeVsp, setIncludeVsp] = React.useState(false)
+  const effectiveBase = includeVsp ? result.tax + result.vsp : result.tax
+  const effective = result.income > 0 ? (effectiveBase / result.income) * 100 : 0
 
   const rows = [
     ['Tax', eur(result.tax)],
-    ['Effective rate', `${effective.toFixed(2)}%`],
+    [includeVsp ? 'Tax + VSP share' : 'Effective tax rate', `${effective.toFixed(2)}%`],
     ['Taxable income / ZVE', eur(result.zve)],
     ['ZTABFB', eur(result.ztabfb)],
     ['VSP', eur(result.vsp)],
@@ -26,6 +28,10 @@ export default function Results({ result }: { result: PapCalculationResult }) {
         <span>{eur(result.income)}</span>
         <strong>{eur(result.tax)}</strong>
       </div>
+      <label className="checkbox-row result-toggle">
+        <input type="checkbox" checked={includeVsp} onChange={(event) => setIncludeVsp(event.target.checked)} />
+        Include VSP in share
+      </label>
       <dl>
         {rows.map(([label, value]) => (
           <React.Fragment key={label}>
