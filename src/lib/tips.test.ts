@@ -224,3 +224,56 @@ describe('tips: splitting benefit for two-earner married couples', () => {
     expect(ids(t)).not.toContain('splitting-benefit')
   })
 })
+
+describe('tips: JAEG / PKV unlock (cheeky)', () => {
+  it('appears for employees below the JAEG on GKV', () => {
+    const t = tipsFor(70_000)
+    expect(ids(t)).toContain('jaeg-unlock')
+  })
+
+  it('is silent once salary clears the JAEG', () => {
+    const t = tipsFor(80_000)
+    expect(ids(t)).not.toContain('jaeg-unlock')
+  })
+
+  it('is silent for PKV employees or Beihilfe', () => {
+    expect(ids(tipsFor(70_000, { pkv: 1 }))).not.toContain('jaeg-unlock')
+    expect(ids(tipsFor(70_000, { pkv: 2 }))).not.toContain('jaeg-unlock')
+  })
+
+  it('uses partner 1 income when married (not household total)', () => {
+    const options: PapOptions = { ...baseOptions, filing: 'married' as const }
+    const result = calculatePapResultFromRE4(200_000, options)
+    const withPartner = computeTips({ result, options, partner1Income: 70_000, partner2Income: 130_000 })
+    const withoutPartner = computeTips({ result, options })
+    expect(ids(withPartner)).toContain('jaeg-unlock')
+    expect(ids(withoutPartner)).not.toContain('jaeg-unlock')
+  })
+
+  it('respects a pro-mode JAEG override', () => {
+    const t = tipsFor(78_000, { jaeg: 81_000 })
+    expect(ids(t)).toContain('jaeg-unlock')
+  })
+})
+
+describe('tips: BBG sprint (cheeky)', () => {
+  it('appears when income is in the last stretch before the RV/AV cap', () => {
+    const t = tipsFor(95_000)
+    expect(ids(t)).toContain('bbg-sprint')
+  })
+
+  it('is silent far below the cap', () => {
+    const t = tipsFor(70_000)
+    expect(ids(t)).not.toContain('bbg-sprint')
+  })
+
+  it('is silent once past the cap', () => {
+    const t = tipsFor(110_000)
+    expect(ids(t)).not.toContain('bbg-sprint')
+  })
+
+  it('uses a pro-mode bbgRvAlv override for the band', () => {
+    const t = tipsFor(115_000, { bbgRvAlv: 121_680 })
+    expect(ids(t)).toContain('bbg-sprint')
+  })
+})

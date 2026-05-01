@@ -1,4 +1,4 @@
-import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from './pap'
+import { PapCalculationResult, PapOptions, calculatePapResultFromRE4, jaegFor } from './pap'
 import { actualContributions, marginalTaxRate } from './rates'
 
 export type TipTone = 'serious' | 'cheeky' | 'absurd'
@@ -235,6 +235,49 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
         description: `Formally leaving the church saves ${eur(savings)}/year on church tax. One-time cost at the registry office is around EUR 30. ` +
           `Spiritual cost at your discretion.`,
         savings,
+        tone: 'cheeky',
+      })
+    }
+  }
+
+  // Earn your way out of GKV — JAEG is a gate, not a suggestion.
+  const jaegYear = options.year ?? 2026
+  const jaegThreshold = jaegFor(jaegYear, options.jaeg)
+  const jaegRelevantSalary = filing === 'married'
+    ? (typeof partner1Income === 'number' ? partner1Income : null)
+    : result.income
+  if (
+    (options.pkv ?? 0) === 0
+    && jaegRelevantSalary !== null
+    && jaegRelevantSalary >= 25_000
+    && jaegRelevantSalary < jaegThreshold
+  ) {
+    const gap = jaegThreshold - jaegRelevantSalary
+    tips.push({
+      id: 'jaeg-unlock',
+      emoji: '🪜',
+      title: 'Grind the JAEG — make more money to unlock PKV',
+      description: `Your salary is ${eur(gap)} below the Versicherungspflichtgrenze (${eur(jaegThreshold)}/year). Until you cross it, the state kindly traps you in GKV regardless of how much you quote Nietzsche about self-reliance. ` +
+        `A raise is not lifestyle creep; it is keys to the private waiting room. (Beamte and freelancers already have a VIP entrance — this tip is for employees who don't.)`,
+      tone: 'cheeky',
+    })
+  }
+
+  // Punch through the RV/AV cap — marginal *social* burden drops on the last euro.
+  if (options.year === 2026 && (options.pkv ?? 0) === 0 && (options.krv ?? 0) !== 1) {
+    const bbgRv = options.bbgRvAlv ?? 101_400
+    if (result.income >= Math.floor(bbgRv * 0.88) && result.income < bbgRv) {
+      const gap = bbgRv - result.income
+      const marginalBurdenPct = marginalTaxRate(result.income, options, 'gross', {
+        delta: 500,
+        includeVspInRate: true,
+      })
+      tips.push({
+        id: 'bbg-sprint',
+        emoji: '🏃',
+        title: 'Sprint through the Beitragsbemessungsgrenze',
+        description: `You are within striking distance of the RV/AV cap (${eur(bbgRv)}/year, still ${eur(gap)} to go). Every gross euro until then drags pension + unemployment contributions with it — it's the treadmill part of the Mittelstandsbauch. ` +
+          `Ironically, the *next* euro after the cap carries zero extra RV/AV; your marginal ${marginalBurdenPct.toFixed(1)} % burden on gross finally loses two of its hungry mouths. Income tax keeps nibbling, but RV stops — call it a Pyrrhic promotion.`,
         tone: 'cheeky',
       })
     }
