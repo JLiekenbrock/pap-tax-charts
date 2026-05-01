@@ -104,29 +104,10 @@ export default function App() {
     income: normalizedSettings.rangeMin,
     income1: normalizedSettings.rangeMin,
     income2: 0,
-  }), [
-    normalizedSettings.rangeMin,
-    normalizedSettings.rangeMax,
-    normalizedSettings.year,
-    normalizedSettings.filing,
-    normalizedSettings.stkl,
-    normalizedSettings.children,
-    normalizedSettings.solidarity,
-    normalizedSettings.churchRate,
-    normalizedSettings.kvz,
-    normalizedSettings.pvs,
-    normalizedSettings.pvz,
-    normalizedSettings.pva,
-    normalizedSettings.krv,
-    normalizedSettings.alv,
-    normalizedSettings.pkv,
-    normalizedSettings.pkpv,
-    normalizedSettings.pkpvagz,
-    normalizedSettings.investmentIncome,
-    normalizedSettings.includeKindergeld,
-    normalizedSettings.kindergeldChildren,
-    normalizedSettings.beamtenMode,
-  ])
+    // Keep a single `normalizedSettings` dependency so every tax input (year, pro
+    // overrides, etc.) reliably invalidates the series — an explicit field list
+    // silently dropped updates (e.g. proMode / BBG) before.
+  }), [normalizedSettings])
   const series = React.useMemo(() => buildSeries(seriesSettings), [seriesSettings])
 
   return (

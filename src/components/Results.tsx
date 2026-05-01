@@ -90,8 +90,14 @@ export default function Results({
     <aside className="results-panel">
       <h2>Selected result</h2>
       <div className="result-kpi">
-        <span>{eur(result.income)}</span>
-        <strong>{eur(result.tax)}</strong>
+        <div className="result-kpi-income">
+          <span>{eur(result.income)}</span>
+          <small>Gross salary (RE4)</small>
+        </div>
+        <div className="result-kpi-tax">
+          <strong>{eur(result.tax)}</strong>
+          <small>Total tax</small>
+        </div>
       </div>
       <label className="checkbox-row result-toggle">
         <input
@@ -107,7 +113,7 @@ export default function Results({
           checked={vspInComposition}
           onChange={(event) => onVspInCompositionChange(event.target.checked)}
         />
-        Include VSP in stacked composition
+        Include social contributions in stacked / % chart
       </label>
       <label className="checkbox-row result-toggle">
         <input

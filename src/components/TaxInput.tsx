@@ -246,7 +246,9 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
         {settings.proMode && (
           <>
             <p className="pro-mode-hint">
-              Override the social-insurance ceilings and the JAEG to model future reform scenarios. Leave a field blank to fall back to the {settings.year} default.
+              Override social-insurance ceilings and JAEG to model reform scenarios. These affect deductions,
+              contributions, and tax only — <strong>gross RE4 does not change</strong>. Leave a field blank to use the{' '}
+              {settings.year} statutory default.
             </p>
             <div className="pro-mode-presets">
               <button

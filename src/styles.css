@@ -380,21 +380,33 @@ select:focus {
 }
 
 .result-kpi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 28px;
   border-bottom: 1px solid #e5e7eb;
   padding-bottom: 14px;
   margin-bottom: 12px;
 }
 
-.result-kpi span {
+.result-kpi-income span,
+.result-kpi-tax strong {
   display: block;
-  color: #6b7280;
-  font-size: 13px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #111827;
 }
 
-.result-kpi strong {
+.result-kpi-tax strong {
+  color: #0f766e;
+}
+
+.result-kpi-income small,
+.result-kpi-tax small {
   display: block;
   margin-top: 4px;
-  font-size: 24px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .result-toggle {

@@ -202,16 +202,20 @@ export default function TaxChart({
     if (vspInComposition) {
       parts.push({
         key: 'vsp',
-        label: 'VSP',
+        label: 'Social (RV+KV+AV)',
         color: '#7C3AED',
-        value: (point) => Math.max(0, point.vsp),
+        value: (point) => Math.max(0, actualContributions(point)),
       })
     }
     parts.push({
       key: 'usableSalary',
-      label: 'Usable salary',
+      label: 'Net after payroll tax & social',
       color: '#64748B',
-      value: (point) => Math.max(0, point.income - point.payrollTax - (vspInComposition ? point.vsp : 0)),
+      value: (point) =>
+        Math.max(
+          0,
+          point.income - point.payrollTax - (vspInComposition ? actualContributions(point) : 0),
+        ),
     })
     parts.push({
       key: 'usableInvestment',
@@ -225,6 +229,16 @@ export default function TaxChart({
     return parts
   }, [vspInComposition])
 
+  // Height of each stacked bar is exactly salary + investment income (layers add up).
+  // Pin the EUR axis to range + investments so toggling tax year does not rescale the Y axis.
+  const stableEuroYMax = React.useMemo(() => {
+    const salaryCap = Math.max(0, settings.rangeMax)
+    const inv = Math.max(0, settings.investmentIncome)
+    const raw = salaryCap + inv
+    if (raw <= 0) return 10_000
+    return Math.ceil((raw * 1.03) / 5000) * 5000
+  }, [settings.rangeMax, settings.investmentIncome])
+
   let selectedIndex = 0
   for (let i = 0; i < series.length; i++) {
     if (Math.abs(series[i].income - currentIncome) < Math.abs(series[selectedIndex]?.income - currentIncome)) selectedIndex = i
@@ -232,19 +246,23 @@ export default function TaxChart({
   const ratesSeries = React.useMemo(() => {
     if (mode !== 'rates' && mode !== 'decomposition') return series
     if (series.length === 0) return series
-    const minIncome = series[0].income
-    const maxIncome = series[series.length - 1].income
+    // Use UI range ends — the main `series` uses rounded steps so the last
+    // point can sit short of `rangeMax`, which makes rates/decomposition
+    // lines stop before the chart's intended x domain.
+    const minIncome = Math.max(0, settings.rangeMin)
+    const maxIncome = Math.max(minIncome, settings.rangeMax)
     const interval = 1000
     const opts = toPapOptions(settings)
     const points: PapCalculationResult[] = []
     for (let income = minIncome; income <= maxIncome; income += interval) {
       points.push(calculatePapResultFromRE4(income, opts))
     }
-    if (points[points.length - 1]?.income !== maxIncome) {
+    const last = points[points.length - 1]
+    if (!last || last.income !== maxIncome) {
       points.push(calculatePapResultFromRE4(maxIncome, opts))
     }
     return points
-  }, [mode, series, settings])
+  }, [mode, series.length, settings])
 
   const decompositionRates = React.useMemo(() => {
     if (mode !== 'decomposition') return [] as MarginalDecomposition[]
@@ -440,6 +458,8 @@ export default function TaxChart({
         type: mode === 'stacked' || mode === 'percent' ? 'category' as const : 'linear' as const,
         title: { display: true, text: 'Salary income / RE4 (EUR)' },
         stacked: mode === 'stacked' || mode === 'percent',
+        min: mode === 'stacked' || mode === 'percent' ? undefined : settings.rangeMin,
+        max: mode === 'stacked' || mode === 'percent' ? undefined : settings.rangeMax,
         grid: {
           display: mode !== 'stacked' && mode !== 'percent',
           drawBorder: true,
@@ -463,6 +483,8 @@ export default function TaxChart({
           text: mode === 'stacked' ? 'Income composition (EUR)' : 'Selected metric value (EUR)',
         },
         stacked: mode === 'stacked',
+        min: mode === 'stacked' || mode === 'lines' ? 0 : undefined,
+        max: mode === 'stacked' || mode === 'lines' ? stableEuroYMax : undefined,
         ticks: {
           callback: (value: string | number) => `EUR ${Number(value).toLocaleString()}`,
         },
@@ -480,8 +502,12 @@ export default function TaxChart({
               : 'Share of income composition (%)',
         },
         min: 0,
-        max: mode === 'percent' ? 100 : undefined,
-        suggestedMax: mode === 'rates' || mode === 'decomposition' ? 60 : undefined,
+        max:
+          mode === 'percent'
+            ? 100
+            : mode === 'rates' || mode === 'decomposition'
+              ? 90
+              : undefined,
         ticks: {
           callback: (value: string | number) => `${Number(value).toFixed(1)}%`,
         },
@@ -489,11 +515,15 @@ export default function TaxChart({
     },
   }
 
+  // Chart.js often fails to refresh stacked/category bar data when only values
+  // change; include year (and mode) in the key so toggling tax year remounts.
+  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}`
+
   return (
     <section className="chart-panel">
       {mode === 'stacked' || mode === 'percent'
-        ? <Bar key={`bar-${mode}`} data={data as any} options={options} plugins={[selectedIncomePlugin]} />
-        : <Line key={`line-${mode}`} data={data as any} options={options} plugins={[selectedIncomePlugin]} />}
+        ? <Bar key={chartInstanceKey} data={data as any} options={options} plugins={[selectedIncomePlugin]} />
+        : <Line key={chartInstanceKey} data={data as any} options={options} plugins={[selectedIncomePlugin]} />}
     </section>
   )
 }
