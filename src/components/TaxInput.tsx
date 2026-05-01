@@ -259,10 +259,14 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
         </label>
         {settings.beamtenMode && (
           <p className="beamten-hint">
-            Modelliert die typische Eckpunkte für Beamte im Lohnsteuer-PAP: keine Beiträge zur gesetzlichen{' '}
-            <strong>Rentenversicherung</strong> und <strong>Arbeitslosenversicherung</strong>; Krankheit über{' '}
-            <strong>Beihilfe</strong> und verbleibende <strong>private Krankenversicherung</strong> (Restpremie minus{' '}
-            Dienstherren-Zuschuss). PAP-Felder: <code>krv=1</code>, <code>alv=1</code>, <code>pkv=2</code>. Kein Anspruch auf Vollständigkeit — Details hängen vom Dienstverhältnis ab.
+            Modelliert typische Eckpunkte für Beamte im Lohnsteuer-PAP:{' '}
+            <strong>keine Abzüge zur gesetzlichen Rentenversicherung (GRV)</strong> und{' '}
+            <strong>keine Arbeitslosenversicherung</strong>{' '}
+            — das ist korrekt, weil die Altersversorgung über die{' '}
+            <strong>Beamtenversorgung</strong> (Versorgungsbezüge vom Dienstherren) läuft, nicht über RV-Beiträge vom Gehalt.{' '}
+            Krankheit über <strong>Beihilfe</strong> und verbleibende <strong>private Krankenversicherung</strong>{' '}
+            (Restpremie minus Dienstherren-Zuschuss). PAP-Felder: <code>krv=1</code>, <code>alv=1</code>,{' '}
+            <code>pkv=2</code>. Freiwillige GRV o. Ä. sind möglich, aber Standard ist anders; kein Anspruch auf Vollständigkeit.
           </p>
         )}
         <label>
