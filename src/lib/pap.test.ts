@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculatePapTax, calculatePapResultFromRE4 } from './pap'
+import { JAEG_2025, JAEG_2026, calculatePapTax, calculatePapResultFromRE4, jaegFor } from './pap'
 
 describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
   it('returns 0 below basic allowance', () => {
@@ -132,6 +132,15 @@ describe('Private health insurance (PKV)', () => {
       pkpvagz: 80_000,
     })
     expect(r.vspKrankenPflege).toBe(0)
+  })
+
+  it('exposes the JAEG (Versicherungspflichtgrenze) constants and selector', () => {
+    expect(JAEG_2025).toBe(73_800)
+    expect(JAEG_2026).toBe(77_400)
+    expect(jaegFor(2025)).toBe(73_800)
+    expect(jaegFor(2026)).toBe(77_400)
+    // 2026 raised the threshold meaningfully (+4.9 % approx).
+    expect(JAEG_2026).toBeGreaterThan(JAEG_2025)
   })
 
   it('PKV with low premium increases tax vs equivalent GKV (smaller deduction)', () => {

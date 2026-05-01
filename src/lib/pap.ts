@@ -56,6 +56,24 @@ const SOLZ_FREE_2025 = 19950
 const SOLZ_FREE_2026 = 20350
 
 /**
+ * Allgemeine Jahresarbeitsentgeltgrenze (JAEG) — the gross-salary
+ * threshold above which an employee may leave the GKV and switch to a
+ * private health insurer (PKV). Civil servants and the self-employed
+ * are exempt from this rule.
+ *
+ * The "besondere" JAEG (EUR 69,750 for 2026) is intentionally not
+ * modelled here since it only applies to people who were already PKV-
+ * insured on 2002-12-31 and is therefore irrelevant for any modern
+ * decision the user might explore.
+ */
+export const JAEG_2025 = 73_800
+export const JAEG_2026 = 77_400
+
+export function jaegFor(year: number): number {
+  return year === 2026 ? JAEG_2026 : JAEG_2025
+}
+
+/**
  * Solidaritätszuschlag on wage tax / income tax, per SolZG §4.
  *
  * Three regimes:

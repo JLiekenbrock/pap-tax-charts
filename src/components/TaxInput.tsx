@@ -1,5 +1,5 @@
 import React from 'react'
-import { PapOptions } from '../lib/pap'
+import { PapOptions, jaegFor } from '../lib/pap'
 import { StklDerivation } from '../lib/stkl'
 
 export type PapExplorerSettings = Required<PapOptions> & {
@@ -255,17 +255,35 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
 
       <div className="control-section">
         <h2>Insurance</h2>
-        <label>
-          Health insurance
-          <select
-            value={settings.pkv}
-            onChange={(e) => updatePkv(Number(e.target.value) as PapExplorerSettings['pkv'])}
-          >
-            <option value={0}>Gesetzlich (GKV)</option>
-            <option value={1}>Privat (PKV)</option>
-            <option value={2}>Privat + Beihilfe (Beamte)</option>
-          </select>
-        </label>
+        {(() => {
+          const jaeg = jaegFor(settings.year)
+          const userSalary = settings.filing === 'married' ? settings.income1 : settings.income
+          const meetsJaeg = userSalary >= jaeg
+          const pkvEmployeeBlocked = settings.pkv === 1 && !meetsJaeg
+          return (
+            <>
+              <label>
+                Health insurance
+                <select
+                  value={settings.pkv}
+                  onChange={(e) => updatePkv(Number(e.target.value) as PapExplorerSettings['pkv'])}
+                >
+                  <option value={0}>Gesetzlich (GKV)</option>
+                  <option value={1}>Privat (PKV)</option>
+                  <option value={2}>Privat + Beihilfe (Beamte)</option>
+                </select>
+              </label>
+              <p className="insurance-hint">
+                Versicherungspflichtgrenze (JAEG) {settings.year}: EUR {jaeg.toLocaleString()}/year. Employees may only switch from GKV to PKV once their gross salary exceeds this threshold. Beamte and the self-employed are exempt.
+              </p>
+              {pkvEmployeeBlocked && (
+                <p className="insurance-warning">
+                  ⚠ Your salary of EUR {userSalary.toLocaleString()}/year is below the JAEG of EUR {jaeg.toLocaleString()}/year. As a regular employee you cannot opt out of GKV into PKV. The model is still computing PKV numbers, but this scenario is not legally possible without changing employment status (e.g. becoming self-employed or a civil servant).
+                </p>
+              )}
+            </>
+          )
+        })()}
 
         {settings.pkv === 0 ? (
           <>
