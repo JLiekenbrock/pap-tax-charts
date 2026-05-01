@@ -1,10 +1,47 @@
 import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from './pap'
 import { actualContributions } from './rates'
 import {
+  DESTATIS_INCOME_TAX_BRACKETS_2021,
+  type DestatisIncomeTaxBracket,
   destatisIncomeTaxBracketForApproxEinkommen,
+  destatisMassWeightedAssessedIncomeTaxOnlyPct as destatisTableMassWeightedIncomeTaxOnlyPct,
   formatDestatisBracketLabel,
 } from './destatis_income_tax_brackets_2021'
 import type { PapExplorerSettings } from '../components/TaxInput'
+
+/**
+ * - intra: payroll income tax vs Destatis peers in-band
+ * - wageSocialBurden: payroll tax + employee social vs mass-weighted anchors across bands
+ */
+export type PrivilegeComparisonMode = 'intra' | 'wageSocialBurden'
+
+export type CrossBandLadderRow = {
+  bracketLabel: string
+  /** Rounded midpoint of the Destatis band (before floor) — lies inside the bracket span. */
+  nominalMidpointEur: number
+  /** RE4 passed to PAP (≥ {@link MIN_DESTATIS_LADDER_EVALUATION_GROSS_EUR} when midpoint is lower). */
+  anchorGross: number
+  socialPct: number
+  /**
+   * (Total model tax + employee social) / total income at anchor.
+   * With no capital income: equals payroll+social as % of salary.
+   * With capital: includes Abgeltungsteuer etc.; denominator is anchor gross + investment.
+   */
+  wageBurdenPct: number
+  massThousandEur: number
+  isYourBracket: boolean
+  /** True when bracket midpoint &lt; floor; model evaluated at {@link MIN_DESTATIS_LADDER_EVALUATION_GROSS_EUR} instead. */
+  usedMinimumEvaluationFloor: boolean
+}
+
+/** @deprecated Use CrossBandLadderRow; kept as alias for tests / callers. */
+export type SocialLadderRow = CrossBandLadderRow
+
+/**
+ * Bracket midpoints below this annual gross are not meaningful for statutory SV in our PAP-style model
+ * (contribution share can exceed 100% of tiny gross). Evaluations use this floor instead.
+ */
+export const MIN_DESTATIS_LADDER_EVALUATION_GROSS_EUR = 12_000
 
 /**
  * Destatis Verdiensterhebung 2024: Bruttojahresverdienst inkl. Sonderzahlungen,
@@ -48,6 +85,26 @@ export function householdGrossForDestatisBracket(settings: PapExplorerSettings):
   return Math.max(0, settings.income)
 }
 
+/**
+ * Explorer slice used only for cross-band ladder anchors: neutral wage earner
+ * (single, STKL I, no children) so mass-weighted benchmarks do not move with
+ * splitting or family allowances — mirroring how the intra-band Destatis peer %
+ * is an official aggregate, not re-simulated under your STKL.
+ *
+ * Preserves year, Soli/church, KVZ/PKV path, capital income, pro BBG overrides,
+ * and contribution flags (e.g. Beamte) from the user.
+ */
+export function canonicalWageExplorerForPrivilegeLadder(
+  explorer: PapExplorerSettings,
+): PapExplorerSettings {
+  return {
+    ...explorer,
+    filing: 'single',
+    stkl: 1,
+    children: 0,
+  }
+}
+
 function papOptsFromExplorer(explorer: PapExplorerSettings, overrides?: Partial<PapOptions>): PapOptions {
   const base: PapOptions = {
     year: explorer.year,
@@ -73,6 +130,14 @@ function papOptsFromExplorer(explorer: PapExplorerSettings, overrides?: Partial<
     if (explorer.jaeg !== undefined) base.jaeg = explorer.jaeg
   }
   return { ...base, ...overrides }
+}
+
+/** Pap options for cross-band ladder anchors (canonical earner profile). */
+export function privilegeLadderPapOpts(
+  explorer: PapExplorerSettings,
+  overrides?: Partial<PapOptions>,
+): PapOptions {
+  return papOptsFromExplorer(canonicalWageExplorerForPrivilegeLadder(explorer), overrides)
 }
 
 export function grossAtDeStatisPercentile(percent: number): number {
@@ -126,6 +191,113 @@ export function payrollIncomeTaxPercentOnSalary(result: PapCalculationResult): n
   return (result.payrollTax / result.income) * 100
 }
 
+/** Employee RV + health/care + AV cash shares as % of gross salary RE4 (`actualContributions`). */
+export function employeeSocialPercentOnSalary(result: PapCalculationResult): number {
+  if (result.income <= 0) return 0
+  return (actualContributions(result) / result.income) * 100
+}
+
+/**
+ * Gross RE4 proxy at which we evaluate the wage model per Destatis Einkommen band —
+ * midpoint of closed bands; open top band uses a high anchor so caps dominate.
+ */
+export function representativeGrossForDestatisBracket(b: DestatisIncomeTaxBracket): number {
+  if (b.hi === null) {
+    return Math.max(b.lo + 250_000, Math.round(b.lo * 1.2))
+  }
+  return (b.lo + b.hi) / 2
+}
+
+/** Nominal bracket midpoint and gross actually passed to the model (may be floored). */
+export function ladderEvaluationGrossForDestatisBracket(b: DestatisIncomeTaxBracket): {
+  nominalMidpointEur: number
+  evaluationGrossEur: number
+  usedMinimumEvaluationFloor: boolean
+} {
+  const nominalMidpointEur = representativeGrossForDestatisBracket(b)
+  const roundedNominal = Math.round(nominalMidpointEur)
+  const evaluationGrossEur = Math.max(roundedNominal, MIN_DESTATIS_LADDER_EVALUATION_GROSS_EUR)
+  return {
+    nominalMidpointEur,
+    evaluationGrossEur,
+    usedMinimumEvaluationFloor: evaluationGrossEur > roundedNominal,
+  }
+}
+
+function modelResultAtAnchorGross(gross: number, settings: PapExplorerSettings): PapCalculationResult {
+  const g = Math.max(0, Math.round(gross))
+  return calculatePapResultFromRE4(g, papOptsFromExplorer(settings))
+}
+
+/** Payroll tax + employee social as % of gross (wage slice). */
+export function wageBurdenPercentOnSalary(result: PapCalculationResult): number {
+  if (result.income <= 0) return 0
+  const social = actualContributions(result)
+  return ((result.payrollTax + social) / result.income) * 100
+}
+
+/**
+ * Per-band anchors: social % on salary, and total tax+social % on model total income
+ * (wage + your entered investment income at every anchor).
+ */
+export function crossBandModelLadder(
+  settings: PapExplorerSettings,
+): {
+  weightedSocialRefPct: number
+  weightedWageBurdenRefPct: number
+  rows: ReadonlyArray<CrossBandLadderRow>
+} {
+  const ladderExplorer = canonicalWageExplorerForPrivilegeLadder(settings)
+  const bracketRow = destatisIncomeTaxBracketForApproxEinkommen(
+    householdGrossForDestatisBracket(settings),
+  )
+  let sumW = 0
+  let sumWs = 0
+  let sumWb = 0
+  const rows: CrossBandLadderRow[] = []
+
+  for (const b of DESTATIS_INCOME_TAX_BRACKETS_2021) {
+    const { evaluationGrossEur, usedMinimumEvaluationFloor, nominalMidpointEur } =
+      ladderEvaluationGrossForDestatisBracket(b)
+    const r = modelResultAtAnchorGross(evaluationGrossEur, ladderExplorer)
+    const socialPct = employeeSocialPercentOnSalary(r)
+    const wageBurdenPct = totalBurdenPercentOnIncome(r)
+    const w = b.adjustedGrossIncomeMassThousandEur
+    if (w > 0 && Number.isFinite(socialPct) && Number.isFinite(wageBurdenPct)) {
+      sumW += w
+      sumWs += w * socialPct
+      sumWb += w * wageBurdenPct
+    }
+    const isSame =
+      bracketRow !== null &&
+      b.lo === bracketRow.lo &&
+      (b.hi === bracketRow.hi || (b.hi === null && bracketRow.hi === null))
+    rows.push({
+      bracketLabel: formatDestatisBracketLabel(b),
+      nominalMidpointEur: Math.round(nominalMidpointEur),
+      anchorGross: evaluationGrossEur,
+      socialPct,
+      wageBurdenPct,
+      massThousandEur: w,
+      isYourBracket: isSame,
+      usedMinimumEvaluationFloor,
+    })
+  }
+
+  const weightedSocialRefPct = sumW > 0 ? sumWs / sumW : 0
+  const weightedWageBurdenRefPct = sumW > 0 ? sumWb / sumW : 0
+  return { weightedSocialRefPct, weightedWageBurdenRefPct, rows }
+}
+
+/** @deprecated Prefer crossBandModelLadder (also returns wage burden and one row shape). */
+export function crossBandWeightedEmployeeSocialRef(settings: PapExplorerSettings): {
+  weightedRefPct: number
+  rows: ReadonlyArray<CrossBandLadderRow>
+} {
+  const { weightedSocialRefPct, rows } = crossBandModelLadder(settings)
+  return { weightedRefPct: weightedSocialRefPct, rows }
+}
+
 /** Payroll `tax` + `actualContributions` (RV, KV+PV or net PKV, AV) as % of `totalIncome`. */
 export function totalBurdenPercentOnIncome(result: PapCalculationResult): number {
   const social = actualContributions(result)
@@ -147,17 +319,43 @@ export function taxOutcomeBandFromBurdens(
 }
 
 export type PrivilegeSnapshot = {
-  band: TaxOutcomeBand
+  /** Assessed income-tax intensity vs band aggregate (intra mode). */
+  bandIntra: TaxOutcomeBand
+  /** Employee social % vs income-mass-weighted ref across bands (`across` mode). */
+  bandAcross: TaxOutcomeBand
+  /** Payroll tax + employee social vs mass-weighted ref (wage + social burden tab). */
+  bandAcrossFull: TaxOutcomeBand
   benchmarkGrossIndividual: number
   incomePercentile: number
   /** Modeled payroll income tax (incl. Soli/church on wages) / salary RE4. */
   yourPayrollIncomeTaxPct: number
-  /** For context: tax + employee social on wage-only slice. */
+  /** Modeled employee RV + KV/PV + AV / salary RE4 (wage-only slice). */
+  yourEmployeeSocialPct: number
+  /** Payroll tax + employee social as % of salary (wage-only scenario). */
   yourWageBurdenPct: number
+  /** (Total model tax + employee social) / total income — cross-band tab headline & vs ref. */
+  yourTotalBurdenPct: number
   /** Destatis “adjusted gross income” band label (2021 table); gross used as placement proxy. */
   destatisBracketLabel: string | null
   /** Σ assessed income tax / Σ Einkommen in that Destatis band, 2021. */
   bracketPeerAssessedIncomeTaxPct: number | null
+  /**
+   * Typical employee-social % if everyone sat at their bracket's anchor gross,
+   * weighted by Destatis Σ Einkommen mass in each band (model schedule only).
+   */
+  crossBandWeightedSocialRefPct: number | null
+  /**
+   * Mass-weighted average (total tax + employee social) / total model income at anchors
+   * — includes your capital-income assumptions at each wage anchor.
+   * **PAP simulation only**; Destatis supplies Σ Einkommen **weights**, not measured SV.
+   */
+  crossBandWeightedWageBurdenRefPct: number | null
+  /**
+   * National assessed income tax / Einkommen implied by the same 2021 table (mass-weighted across bands).
+   * **No social data** in this publication — for context vs your all-in model burden only.
+   */
+  destatisMassWeightedAssessedIncomeTaxOnlyPct: number
+  socialLadderRows: ReadonlyArray<CrossBandLadderRow>
   /** EUR used to pick the bracket (single: RE4; married: sum RE4). */
   bracketPlacementBasisEur: number
   destatisIncomeTaxTableYear: number
@@ -167,9 +365,13 @@ export type PrivilegeSnapshot = {
 }
 
 /**
- * Winner/loser: modeled **payroll income tax % on salary** vs Destatis aggregate
- * **assessed income tax / Einkommen** for the band your gross is mapped into.
- * Social contributions are **not** in the official bracket ratio — see UI.
+ * Snapshot for PrivilegeCheck:
+ * - **Within band:** payroll income tax % vs Destatis assessed income tax / Einkommen for that slice.
+ * - **Wage + social burden:** your PAP **tax + employee social** vs a **PAP-only** ladder average
+ *   (same anchor grosses), using Destatis **Σ Einkommen only as weights** — not a Destatis-measured combined rate.
+ *   Anchors use a **fixed reference earner** (single, STKL I, no children) so the benchmark does not slide with
+ *   splitting or family STKL; your headline still reflects your actual inputs.
+ *   The tax table has **no** employee SV; the UI still shows mass-weighted **income-tax-only** for context.
  */
 export function computePrivilegeSnapshot(
   settings: PapExplorerSettings,
@@ -180,7 +382,7 @@ export function computePrivilegeSnapshot(
   const salaryRe4 = userResult.income
   const yourWage = calculatePapResultFromRE4(salaryRe4, optsWageOnly)
   const yourPayrollIncomeTaxPct = payrollIncomeTaxPercentOnSalary(userResult)
-  const yourWageBurdenPct = totalBurdenPercentOnIncome(yourWage)
+  const yourWageBurdenPct = wageBurdenPercentOnSalary(yourWage)
 
   const bracketPlacementBasisEur = householdGrossForDestatisBracket(settings)
   const bracketRow = destatisIncomeTaxBracketForApproxEinkommen(bracketPlacementBasisEur)
@@ -188,21 +390,50 @@ export function computePrivilegeSnapshot(
   const destatisBracketLabel = bracketRow ? formatDestatisBracketLabel(bracketRow) : null
 
   const hasCapitalIncome = (settings.investmentIncome || 0) > 0
-  const yourBurdenPctAllIn = hasCapitalIncome ? totalBurdenPercentOnIncome(userResult) : yourWageBurdenPct
+  const yourTotalBurdenPct = totalBurdenPercentOnIncome(userResult)
+  const yourBurdenPctAllIn = yourTotalBurdenPct
+  const yourEmployeeSocialPct = employeeSocialPercentOnSalary(yourWage)
 
-  const band =
+  const {
+    weightedSocialRefPct,
+    weightedWageBurdenRefPct,
+    rows: socialLadderRows,
+  } = crossBandModelLadder(settings)
+  const crossBandWeightedSocialRefPct = socialLadderRows.length > 0 ? weightedSocialRefPct : null
+  const crossBandWeightedWageBurdenRefPct = socialLadderRows.length > 0 ? weightedWageBurdenRefPct : null
+  const destatisMassWeightedAssessedIncomeTaxOnlyPct = destatisTableMassWeightedIncomeTaxOnlyPct()
+
+  const bandIntra =
     bracketPeerAssessedIncomeTaxPct !== null
       ? taxOutcomeBandFromBurdens(yourPayrollIncomeTaxPct, bracketPeerAssessedIncomeTaxPct)
       : 'typical'
 
+  const bandAcross =
+    crossBandWeightedSocialRefPct !== null && salaryRe4 > 0
+      ? taxOutcomeBandFromBurdens(yourEmployeeSocialPct, crossBandWeightedSocialRefPct)
+      : 'typical'
+
+  const bandAcrossFull =
+    crossBandWeightedWageBurdenRefPct !== null && userResult.totalIncome > 0
+      ? taxOutcomeBandFromBurdens(yourTotalBurdenPct, crossBandWeightedWageBurdenRefPct)
+      : 'typical'
+
   return {
-    band,
+    bandIntra,
+    bandAcross,
+    bandAcrossFull,
     benchmarkGrossIndividual,
     incomePercentile: individualIncomePercentileDeStatis(benchmarkGrossIndividual),
     yourPayrollIncomeTaxPct,
+    yourEmployeeSocialPct,
     yourWageBurdenPct,
+    yourTotalBurdenPct,
     destatisBracketLabel,
     bracketPeerAssessedIncomeTaxPct,
+    crossBandWeightedSocialRefPct,
+    crossBandWeightedWageBurdenRefPct,
+    destatisMassWeightedAssessedIncomeTaxOnlyPct,
+    socialLadderRows,
     bracketPlacementBasisEur,
     destatisIncomeTaxTableYear: 2021,
     yourBurdenPctAllIn,

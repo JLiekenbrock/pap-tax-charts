@@ -16,6 +16,8 @@ export type DestatisIncomeTaxBracket = {
   hi: number | null
   /** Σ assessed income tax / Σ adjusted gross income in band, % */
   empiricalAssessedIncomeTaxPct: number
+  /** Σ adjusted gross income in band, 1000 EUR (table column, for weighting) */
+  adjustedGrossIncomeMassThousandEur: number
 }
 
 /** Thousand EUR aggregates (table as published). */
@@ -46,8 +48,28 @@ export const DESTATIS_INCOME_TAX_BRACKETS_2021: ReadonlyArray<DestatisIncomeTaxB
     lo,
     hi,
     empiricalAssessedIncomeTaxPct: incomeK > 0 ? (taxK / incomeK) * 100 : 0,
+    adjustedGrossIncomeMassThousandEur: incomeK,
   }),
 )
+
+/**
+ * Mass-weighted average of (Σ assessed income tax / Σ Einkommen) across bands —
+ * algebraically equals **national** aggregate assessed income tax / aggregate Einkommen in this table.
+ * The annual income tax statistics do **not** include employee social-security contributions.
+ */
+export function destatisMassWeightedAssessedIncomeTaxOnlyPct(
+  brackets: ReadonlyArray<DestatisIncomeTaxBracket> = DESTATIS_INCOME_TAX_BRACKETS_2021,
+): number {
+  let wSum = 0
+  let weightedPct = 0
+  for (const b of brackets) {
+    const w = b.adjustedGrossIncomeMassThousandEur
+    if (w <= 0) continue
+    wSum += w
+    weightedPct += w * b.empiricalAssessedIncomeTaxPct
+  }
+  return wSum > 0 ? weightedPct / wSum : 0
+}
 
 export function destatisIncomeTaxBracketForApproxEinkommen(
   approxEinkommenEur: number,
