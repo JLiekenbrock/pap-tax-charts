@@ -30,6 +30,10 @@ ChartJS.register(
 
 export type ChartMetric =
   | 'tax'
+  | 'payrollTax'
+  | 'investmentTax'
+  | 'investmentTaxable'
+  | 'investmentIncome'
   | 'zve'
   | 'vsp'
   | 'ztabfb'
@@ -47,12 +51,26 @@ type MetricConfig = {
   value: (point: PapCalculationResult) => number
 }
 
-function wagePercent(point: PapCalculationResult, value: number) {
-  return point.income > 0 ? (value / point.income) * 100 : 0
+function totalIncome(point: PapCalculationResult) {
+  return point.totalIncome
+}
+
+function incomePercent(point: PapCalculationResult, value: number) {
+  return totalIncome(point) > 0 ? (value / totalIncome(point)) * 100 : 0
 }
 
 export const CHART_METRICS: MetricConfig[] = [
   { key: 'tax', label: 'Tax', color: '#0F766E', unit: 'eur', value: (point) => point.tax },
+  { key: 'payrollTax', label: 'Payroll tax', color: '#047857', unit: 'eur', value: (point) => point.payrollTax },
+  {
+    key: 'investmentTax',
+    label: 'Capital gains tax',
+    color: '#B45309',
+    unit: 'eur',
+    value: (point) => point.investmentTax + point.investmentSolz + point.investmentChurch,
+  },
+  { key: 'investmentTaxable', label: 'Capital gains taxable', color: '#CA8A04', unit: 'eur', value: (point) => point.investmentTaxable },
+  { key: 'investmentIncome', label: 'Capital gains income', color: '#A16207', unit: 'eur', value: (point) => point.investmentIncome },
   { key: 'zve', label: 'ZVE', color: '#2563EB', unit: 'eur', value: (point) => point.zve },
   { key: 'vsp', label: 'VSP', color: '#7C3AED', unit: 'eur', value: (point) => point.vsp },
   { key: 'ztabfb', label: 'ZTABFB', color: '#EA580C', unit: 'eur', value: (point) => point.ztabfb },
@@ -64,14 +82,27 @@ export const CHART_METRICS: MetricConfig[] = [
 ]
 
 const PERCENT_METRICS: MetricConfig[] = [
-  { key: 'tax', label: 'Tax %', color: '#0F766E', unit: 'percent', value: (point) => wagePercent(point, point.tax) },
-  { key: 'vsp', label: 'VSP %', color: '#7C3AED', unit: 'percent', value: (point) => wagePercent(point, point.vsp) },
+  { key: 'payrollTax', label: 'Payroll tax %', color: '#047857', unit: 'percent', value: (point) => incomePercent(point, point.payrollTax) },
+  {
+    key: 'investmentTax',
+    label: 'Capital gains tax %',
+    color: '#B45309',
+    unit: 'percent',
+    value: (point) => incomePercent(point, point.investmentTax + point.investmentSolz + point.investmentChurch),
+  },
+  { key: 'vsp', label: 'VSP %', color: '#7C3AED', unit: 'percent', value: (point) => incomePercent(point, point.vsp) },
   {
     key: 'zve',
     label: 'Remaining %',
     color: '#64748B',
     unit: 'percent',
-    value: (point) => Math.max(0, 100 - wagePercent(point, point.tax) - wagePercent(point, point.vsp)),
+    value: (point) => Math.max(
+      0,
+      100
+        - incomePercent(point, point.payrollTax)
+        - incomePercent(point, point.investmentTax + point.investmentSolz + point.investmentChurch)
+        - incomePercent(point, point.vsp),
+    ),
   },
 ]
 
@@ -84,14 +115,20 @@ const STACKED_PARTS: Array<{
   color: string
   value: (point: PapCalculationResult) => number
 }> = [
-  { key: 'tax', label: 'Tax', color: '#0F766E', value: (point) => point.tax },
+  { key: 'payrollTax', label: 'Payroll tax', color: '#047857', value: (point) => point.payrollTax },
+  {
+    key: 'capitalGainsTax',
+    label: 'Capital gains tax',
+    color: '#B45309',
+    value: (point) => point.investmentTax + point.investmentSolz + point.investmentChurch,
+  },
   { key: 'vsp', label: 'VSP', color: '#7C3AED', value: (point) => point.vsp },
   { key: 'ztabfb', label: 'Allowances', color: '#EA580C', value: (point) => point.ztabfb },
   {
     key: 'netSalary',
-    label: 'Net salary',
+    label: 'Net income',
     color: '#64748B',
-    value: (point) => Math.max(0, point.income - point.tax - point.vsp),
+    value: (point) => Math.max(0, point.totalIncome - point.tax - point.vsp),
   },
 ]
 
@@ -218,7 +255,7 @@ export default function TaxChart({
         ? [
             {
               label: 'Effective tax rate',
-              data: ratesSeries.map((point) => ({ x: point.income, y: wagePercent(point, point.tax) })),
+              data: ratesSeries.map((point) => ({ x: point.income, y: incomePercent(point, point.tax) })),
               borderColor: '#0F766E',
               backgroundColor: '#0F766E',
               borderWidth: 2.5,

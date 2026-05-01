@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: PapExplorerSettings = {
   income: 60000,
   income1: 60000,
   income2: 0,
+  investmentIncome: 0,
   includeKindergeld: false,
   kindergeldChildren: 0,
   rangeMin: 0,
@@ -53,13 +54,13 @@ export default function App() {
   const [rateBasis, setRateBasis] = React.useState<RateBasis>('gross')
 
   const normalizedSettings = React.useMemo(() => {
-    const rangeMin = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
-    const rangeMax = Math.max(rangeMin + 1000, settings.rangeMax)
-    const income1 = clamp(settings.income1, 0, rangeMax)
-    const income2 = clamp(settings.income2, 0, rangeMax)
-    const income = settings.filing === 'married'
-      ? clamp(income1 + income2, rangeMin, rangeMax)
-      : clamp(settings.income, rangeMin, rangeMax)
+    const income1 = Math.max(0, settings.income1)
+    const income2 = Math.max(0, settings.income2)
+    const filingIncome = settings.filing === 'married' ? income1 + income2 : Math.max(0, settings.income)
+    const highestIncome = Math.max(filingIncome, income1 + income2, 10000)
+    const rangeMin = 0
+    const rangeMax = Math.max(30000, Math.ceil((highestIncome * 1.5 + 10000) / 1000) * 1000)
+    const income = clamp(filingIncome, rangeMin, rangeMax)
     const kindergeldChildren = Math.max(0, Math.floor(settings.kindergeldChildren))
     return {
       ...settings,
@@ -68,6 +69,7 @@ export default function App() {
       income,
       income1,
       income2,
+      investmentIncome: Math.max(0, settings.investmentIncome),
       kindergeldChildren,
       points: clamp(settings.points, 2, 1000),
     }
@@ -77,7 +79,36 @@ export default function App() {
     () => calculatePapResultFromRE4(normalizedSettings.income, normalizedSettings),
     [normalizedSettings],
   )
-  const series = React.useMemo(() => buildSeries(normalizedSettings), [normalizedSettings])
+  const seriesSettings = React.useMemo<PapExplorerSettings>(() => ({
+    ...normalizedSettings,
+    // Series depends on range and tax options, not on the currently selected income point.
+    income: normalizedSettings.rangeMin,
+    income1: normalizedSettings.rangeMin,
+    income2: 0,
+  }), [
+    normalizedSettings.rangeMin,
+    normalizedSettings.rangeMax,
+    normalizedSettings.points,
+    normalizedSettings.year,
+    normalizedSettings.filing,
+    normalizedSettings.stkl,
+    normalizedSettings.children,
+    normalizedSettings.solidarity,
+    normalizedSettings.churchRate,
+    normalizedSettings.kvz,
+    normalizedSettings.pvs,
+    normalizedSettings.pvz,
+    normalizedSettings.pva,
+    normalizedSettings.krv,
+    normalizedSettings.alv,
+    normalizedSettings.pkv,
+    normalizedSettings.pkpv,
+    normalizedSettings.pkpvagz,
+    normalizedSettings.investmentIncome,
+    normalizedSettings.includeKindergeld,
+    normalizedSettings.kindergeldChildren,
+  ])
+  const series = React.useMemo(() => buildSeries(seriesSettings), [seriesSettings])
 
   return (
     <main className="app-shell">

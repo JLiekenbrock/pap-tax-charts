@@ -10,15 +10,17 @@ const KINDERGELD_MONTHLY_2026 = 259
 
 export default function Results({ result, settings }: { result: PapCalculationResult; settings: PapExplorerSettings }) {
   const [includeVsp, setIncludeVsp] = React.useState(false)
-  const netSalary = Math.max(0, result.income - result.tax - result.vsp)
+  const netIncome = Math.max(0, result.totalIncome - result.tax - result.vsp)
   const kindergeld = settings.includeKindergeld ? settings.kindergeldChildren * KINDERGELD_MONTHLY_2026 * 12 : 0
-  const netWithKindergeld = netSalary + kindergeld
+  const netWithKindergeld = netIncome + kindergeld
   const effectiveBase = includeVsp ? result.tax + result.vsp : result.tax
-  const effective = result.income > 0 ? (effectiveBase / result.income) * 100 : 0
+  const effective = result.totalIncome > 0 ? (effectiveBase / result.totalIncome) * 100 : 0
 
   const rows = [
     ['Tax', eur(result.tax)],
-    ['Net salary', eur(netSalary)],
+    ['Payroll tax', eur(result.payrollTax)],
+    ['Investment tax', eur(result.investmentTax + result.investmentSolz + result.investmentChurch)],
+    ['Net income', eur(netIncome)],
     ...(settings.includeKindergeld ? [
       ['Kindergeld', eur(kindergeld)],
       ['Net incl. Kindergeld', eur(netWithKindergeld)],
@@ -28,6 +30,9 @@ export default function Results({ result, settings }: { result: PapCalculationRe
       ['Income 1', eur(settings.income1)],
       ['Income 2', eur(settings.income2)],
     ] : []),
+    ['Investment income', eur(result.investmentIncome)],
+    ['Saver allowance', eur(result.saverAllowance)],
+    ['Investment taxable', eur(result.investmentTaxable)],
     ['Taxable income / ZVE', eur(result.zve)],
     ['ZTABFB', eur(result.ztabfb)],
     ['VSP', eur(result.vsp)],

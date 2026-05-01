@@ -6,6 +6,7 @@ export type PapExplorerSettings = Required<PapOptions> & {
   income: number
   income1: number
   income2: number
+  investmentIncome: number
   includeKindergeld: boolean
   kindergeldChildren: number
   rangeMin: number
@@ -29,47 +30,61 @@ function numberValue(value: string) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function DeferredNumberInput({
+function DeferredRangeInput({
   value,
   min,
+  max,
   step,
+  ariaLabel,
+  className,
   onCommit,
+  suffix,
 }: {
   value: number
-  min?: number
-  step?: number
+  min: number
+  max: number
+  step: number
+  ariaLabel: string
+  className?: string
   onCommit: (value: number) => void
+  suffix?: string
 }) {
-  const [draft, setDraft] = React.useState(String(value))
-  const [focused, setFocused] = React.useState(false)
+  const [draft, setDraft] = React.useState(value)
+  const [active, setActive] = React.useState(false)
 
   React.useEffect(() => {
-    if (!focused) setDraft(String(value))
-  }, [focused, value])
+    if (!active) setDraft(value)
+  }, [active, value])
 
-  const commit = () => {
-    const parsed = Number(draft)
-    if (Number.isFinite(parsed)) {
-      onCommit(parsed)
-    } else {
-      setDraft(String(value))
-    }
-    setFocused(false)
-  }
+  const commit = React.useCallback(() => {
+    onCommit(draft)
+    setActive(false)
+  }, [draft, onCommit])
 
   return (
-    <input
-      type="number"
-      value={draft}
-      min={min}
-      step={step}
-      onFocus={() => setFocused(true)}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') event.currentTarget.blur()
-      }}
-    />
+    <div>
+      <input
+        className={className}
+        type="range"
+        aria-label={ariaLabel}
+        value={draft}
+        min={min}
+        max={max}
+        step={step}
+        onPointerDown={() => setActive(true)}
+        onInput={(e) => setDraft(numberValue(e.currentTarget.value))}
+        onPointerUp={commit}
+        onMouseUp={commit}
+        onTouchEnd={commit}
+        onBlur={commit}
+        onKeyUp={(event) => {
+          if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') commit()
+        }}
+      />
+      <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '0.2rem' }}>
+        Slider value: {Math.round(draft).toLocaleString()}{suffix ? ` ${suffix}` : ''}
+      </div>
+    </div>
   )
 }
 
@@ -77,6 +92,7 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
   const update = <K extends keyof PapExplorerSettings>(key: K, value: PapExplorerSettings[K]) => {
     onChange({ ...settings, [key]: value })
   }
+  const investmentSliderMax = Math.max(20000, Math.ceil((settings.investmentIncome * 1.5 + 5000) / 1000) * 1000)
 
   const updateIncomePart = (key: 'income1' | 'income2', value: number) => {
     const next = { ...settings, [key]: value }
@@ -123,16 +139,15 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
           {settings.filing === 'married' ? 'Combined income' : 'Income'}
           <input type="number" value={settings.income} min={0} step={1000} onChange={(e) => update('income', numberValue(e.target.value))} />
         </label>
-        <input
+        <DeferredRangeInput
           className="income-slider"
-          type="range"
-          aria-label="Income slider"
+          ariaLabel="Income slider"
           value={settings.income}
           min={settings.rangeMin}
           max={settings.rangeMax}
           step={100}
-          onInput={(e) => update('income', numberValue(e.currentTarget.value))}
-          onChange={(e) => update('income', numberValue(e.target.value))}
+          onCommit={(value) => update('income', value)}
+          suffix="EUR"
         />
         {settings.filing === 'married' && (
           <div className="income-split">
@@ -140,44 +155,32 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
               Income 1
               <input type="number" value={settings.income1} min={0} step={1000} onChange={(e) => updateIncomePart('income1', numberValue(e.target.value))} />
             </label>
-            <input
+            <DeferredRangeInput
               className="income-slider"
-              type="range"
-              aria-label="Income 1 slider"
+              ariaLabel="Income 1 slider"
               value={settings.income1}
               min={0}
               max={settings.rangeMax}
               step={100}
-              onInput={(e) => updateIncomePart('income1', numberValue(e.currentTarget.value))}
-              onChange={(e) => updateIncomePart('income1', numberValue(e.target.value))}
+              onCommit={(value) => updateIncomePart('income1', value)}
+              suffix="EUR"
             />
             <label>
               Income 2
               <input type="number" value={settings.income2} min={0} step={1000} onChange={(e) => updateIncomePart('income2', numberValue(e.target.value))} />
             </label>
-            <input
+            <DeferredRangeInput
               className="income-slider"
-              type="range"
-              aria-label="Income 2 slider"
+              ariaLabel="Income 2 slider"
               value={settings.income2}
               min={0}
               max={settings.rangeMax}
               step={100}
-              onInput={(e) => updateIncomePart('income2', numberValue(e.currentTarget.value))}
-              onChange={(e) => updateIncomePart('income2', numberValue(e.target.value))}
+              onCommit={(value) => updateIncomePart('income2', value)}
+              suffix="EUR"
             />
           </div>
         )}
-        <div className="two-col">
-          <label>
-            Min
-            <DeferredNumberInput value={settings.rangeMin} min={0} step={1000} onCommit={(value) => update('rangeMin', value)} />
-          </label>
-          <label>
-            Max
-            <DeferredNumberInput value={settings.rangeMax} min={1000} step={1000} onCommit={(value) => update('rangeMax', value)} />
-          </label>
-        </div>
         <label>
           Points
           <input type="number" value={settings.points} min={2} max={1000} step={10} onChange={(e) => update('points', numberValue(e.target.value))} />
@@ -205,6 +208,20 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
           Child allowance factor / ZKF
           <input type="number" value={settings.children} min={0} step={0.5} onChange={(e) => update('children', numberValue(e.target.value))} />
         </label>
+        <label>
+          Investment income (annual)
+          <input type="number" value={settings.investmentIncome} min={0} step={100} onChange={(e) => update('investmentIncome', numberValue(e.target.value))} />
+        </label>
+        <DeferredRangeInput
+          className="income-slider"
+          ariaLabel="Investment income slider"
+          value={settings.investmentIncome}
+          min={0}
+          max={investmentSliderMax}
+          step={50}
+          onCommit={(value) => update('investmentIncome', value)}
+          suffix="EUR"
+        />
         <label className="checkbox-row">
           <input type="checkbox" checked={settings.includeKindergeld} onChange={(e) => updateKindergeld(e.target.checked)} />
           Include Kindergeld

@@ -14,6 +14,7 @@ export type PapOptions = {
   pkv?: 0 | 1 | 2 // private insurance mode; 0 means statutory
   pkpv?: number // monthly private basic health/care premium in cents
   pkpvagz?: number // monthly employer subsidy for private insurance in cents
+  investmentIncome?: number // annual investment income in EUR
 }
 
 // Reasonable default assumptions (documented):
@@ -38,6 +39,7 @@ const DEFAULTS: Required<PapOptions> = {
   pkv: 0,
   pkpv: 0,
   pkpvagz: 0,
+  investmentIncome: 0,
 }
 
 // MPARA constants / PAP tables (partial)
@@ -62,6 +64,8 @@ const PVSATZAN_2026 = 0.018
 
 export type PapCalculationResult = {
   income: number
+  investmentIncome: number
+  totalIncome: number
   stkl: number
   year: number
   kztab: number
@@ -82,6 +86,12 @@ export type PapCalculationResult = {
   vfrb: number
   wvfrb: number
   baseTax: number
+  payrollTax: number
+  investmentTaxable: number
+  saverAllowance: number
+  investmentTax: number
+  investmentSolz: number
+  investmentChurch: number
   solz: number
   church: number
   tax: number
@@ -167,13 +177,25 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
       if (base > solzFree) solz = Math.round(base * 0.055)
     }
     const church = Math.round(base * (o.churchRate || 0))
-    return base + solz + church
+    const payrollTax = base + solz + church
+    const saverAllowance = o.filing === 'married' ? 2000 : 1000
+    const investmentTaxable = Math.max(0, (o.investmentIncome || 0) - saverAllowance)
+    const investmentTax = Math.round(investmentTaxable * 0.25)
+    const investmentSolz = o.solidarity ? Math.round(investmentTax * 0.055) : 0
+    const investmentChurch = Math.round(investmentTax * (o.churchRate || 0))
+    return payrollTax + investmentTax + investmentSolz + investmentChurch
   }
 
   // Fallback: simple progressive approximation when not 2025
   const z = (taxable - 10908) / 10000
   const rate = 0.14 + 0.28 * Math.min(1, Math.max(0, z) / 4)
-  return Math.round(Math.max(0, taxable - 10908) * rate)
+  const payrollTax = Math.round(Math.max(0, taxable - 10908) * rate)
+  const saverAllowance = o.filing === 'married' ? 2000 : 1000
+  const investmentTaxable = Math.max(0, (o.investmentIncome || 0) - saverAllowance)
+  const investmentTax = Math.round(investmentTaxable * 0.25)
+  const investmentSolz = o.solidarity ? Math.round(investmentTax * 0.055) : 0
+  const investmentChurch = Math.round(investmentTax * (o.churchRate || 0))
+  return payrollTax + investmentTax + investmentSolz + investmentChurch
 }
 
 // --- Start PAP flow helpers (simplified MZTABFB + UPEVP + MLSTJAHR) ---
@@ -271,16 +293,30 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
   const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve, kztab)
 
   // Solidaritätszuschlag (approx)
-  let solz = 0
+  let wageSolz = 0
   const solzFree = o.year === 2026 ? SOLZ_FREE_2026 * kztab : SOLZ_FREE_2025
-  if (o.solidarity && base > solzFree) solz = Math.round(base * 0.055)
-  const church = Math.round(base * (o.churchRate || 0))
-  const tax = base + solz + church
+  if (o.solidarity && base > solzFree) wageSolz = Math.round(base * 0.055)
+  const wageChurch = Math.round(base * (o.churchRate || 0))
+  const payrollTax = base + wageSolz + wageChurch
+
+  const investmentIncome = Math.max(0, o.investmentIncome || 0)
+  const saverAllowance = o.filing === 'married' ? 2000 : 1000
+  const investmentTaxable = Math.max(0, investmentIncome - saverAllowance)
+  const investmentTax = Math.round(investmentTaxable * 0.25)
+  const investmentSolz = o.solidarity ? Math.round(investmentTax * 0.055) : 0
+  const investmentChurch = Math.round(investmentTax * (o.churchRate || 0))
+
+  const baseTax = base + investmentTax
+  const solz = wageSolz + investmentSolz
+  const church = wageChurch + investmentChurch
+  const tax = payrollTax + investmentTax + investmentSolz + investmentChurch
   const vfrb = Math.floor(anp)
   const wvfrb = Math.max(0, Math.floor(zve - gfb))
 
   return {
     income: re4,
+    investmentIncome,
+    totalIncome: re4 + investmentIncome,
     stkl: o.stkl,
     year: o.year,
     kztab,
@@ -300,7 +336,13 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
     zve,
     vfrb,
     wvfrb,
-    baseTax: base,
+    baseTax,
+    payrollTax,
+    investmentTaxable,
+    saverAllowance,
+    investmentTax,
+    investmentSolz,
+    investmentChurch,
     solz,
     church,
     tax,
