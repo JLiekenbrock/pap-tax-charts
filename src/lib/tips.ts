@@ -86,7 +86,7 @@ export function computeTips({ result, options }: TipInputs): Tip[] {
       id: 'soli-edge',
       emoji: '🪙',
       title: 'You just barely owe Soli',
-      description: `Your income tax base is only ${eur(overshoot)} above the Solidaritätszuschlag exemption (${eur(solzFree)}). Bumping that down — extra Werbungskosten, Sonderausgaben, or a Riester contribution — pushes you fully out of the 5.5% surcharge.`,
+      description: `Your income tax base is only ${eur(overshoot)} above the Solidaritätszuschlag Freigrenze (${eur(solzFree)}). You are still inside the Milderungszone (11.9 % taper), so any extra Werbungskosten, Sonderausgaben, or a Riester contribution that pushes the base back below ${eur(solzFree)} eliminates the surcharge entirely.`,
       tone: 'serious',
     })
   }

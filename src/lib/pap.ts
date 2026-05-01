@@ -55,6 +55,27 @@ const KFB_PER_CHILD_2026 = 9756
 const SOLZ_FREE_2025 = 19950
 const SOLZ_FREE_2026 = 20350
 
+/**
+ * Solidaritätszuschlag on wage tax / income tax, per SolZG §4.
+ *
+ * Three regimes:
+ *   1. base <= Freigrenze            → 0
+ *   2. Freigrenze < base < ~1.86×F   → 11.9 % of (base − Freigrenze)  (Milderungszone)
+ *   3. base above the taper          → 5.5 % of base                  (regular rate)
+ *
+ * Without the Milderungszone the soli would jump from 0 to ~5.5 %·F at the
+ * threshold, producing the visible "spike" in our charts.
+ */
+function computeWageSoli(base: number, solidarity: boolean, year: number, kztab: number): number {
+  if (!solidarity) return 0
+  const solzFreePerHead = year === 2026 ? SOLZ_FREE_2026 : SOLZ_FREE_2025
+  const solzFree = solzFreePerHead * kztab
+  if (base <= solzFree) return 0
+  const standard = base * 0.055
+  const taper = (base - solzFree) * 0.119
+  return Math.round(Math.min(standard, taper))
+}
+
 const BBGRVALV_2026 = 101400
 const BBGKVPV_2026 = 69750
 const AVSATZAN_2026 = 0.013
@@ -173,12 +194,7 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
   if (o.year === 2025 || o.year === 2026) {
     const kztab = o.filing === 'married' || o.stkl === 3 ? 2 : 1
     const base = o.year === 2026 ? uptab26(taxable, kztab) : uptab25(taxable, kztab)
-    // Solidaritätszuschlag: approximate using the simple rule implemented earlier
-    let solz = 0
-    if (o.solidarity) {
-      const solzFree = o.year === 2026 ? SOLZ_FREE_2026 : SOLZ_FREE_2025
-      if (base > solzFree) solz = Math.round(base * 0.055)
-    }
+    const solz = computeWageSoli(base, o.solidarity, o.year, kztab)
     const church = Math.round(base * (o.churchRate || 0))
     const payrollTax = base + solz + church
     const saverAllowance = o.filing === 'married' ? 2000 : 1000
@@ -295,10 +311,7 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
   const gfb = o.year === 2026 ? GFB_2026 : GFB_2025
   const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve, kztab)
 
-  // Solidaritätszuschlag (approx)
-  let wageSolz = 0
-  const solzFree = o.year === 2026 ? SOLZ_FREE_2026 * kztab : SOLZ_FREE_2025
-  if (o.solidarity && base > solzFree) wageSolz = Math.round(base * 0.055)
+  const wageSolz = computeWageSoli(base, o.solidarity, o.year, kztab)
   const wageChurch = Math.round(base * (o.churchRate || 0))
   const payrollTax = base + wageSolz + wageChurch
 

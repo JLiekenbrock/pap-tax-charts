@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculatePapTax } from './pap'
+import { calculatePapTax, calculatePapResultFromRE4 } from './pap'
 
 describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
   it('returns 0 below basic allowance', () => {
@@ -24,5 +24,74 @@ describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
     // Tax should be less than income but sizable
     expect(t).toBeGreaterThan(100000)
     expect(t).toBeLessThan(400000)
+  })
+})
+
+describe('Solidaritätszuschlag Milderungszone (SolZG §4)', () => {
+  const SOLZ_FREE_2026 = 20_350
+
+  function soli(re4: number) {
+    return calculatePapResultFromRE4(re4, {
+      year: 2026,
+      filing: 'single',
+      children: 0,
+      solidarity: true,
+      churchRate: 0,
+    }).solz
+  }
+
+  function base(re4: number) {
+    return calculatePapResultFromRE4(re4, {
+      year: 2026,
+      filing: 'single',
+      children: 0,
+      solidarity: true,
+      churchRate: 0,
+    }).base
+  }
+
+  it('is zero when the wage tax base is at or below the Freigrenze', () => {
+    // Find an income whose base is ≤ Freigrenze. ~70k EUR salary → base ≈ 14k.
+    const result = calculatePapResultFromRE4(70_000, { year: 2026, solidarity: true })
+    expect(result.base).toBeLessThanOrEqual(SOLZ_FREE_2026)
+    expect(result.solz).toBe(0)
+  })
+
+  it('phases in via the 11.9% taper just above the Freigrenze (no spike)', () => {
+    // Find an income where base sits just above Freigrenze (around 90-95k EUR salary).
+    let lowSalary = 70_000
+    let highSalary = 100_000
+    for (let i = 0; i < 20; i++) {
+      const mid = Math.round((lowSalary + highSalary) / 2)
+      if (base(mid) <= SOLZ_FREE_2026) lowSalary = mid
+      else highSalary = mid
+    }
+    const justBelow = base(lowSalary)
+    const justAbove = base(highSalary)
+    expect(justBelow).toBeLessThanOrEqual(SOLZ_FREE_2026)
+    expect(justAbove).toBeGreaterThan(SOLZ_FREE_2026)
+
+    const soliJustBelow = soli(lowSalary)
+    const soliJustAbove = soli(highSalary)
+    // Without the Milderungszone, soliJustAbove would jump to ~5.5 % × 20.4k ≈ 1119 EUR.
+    // With it, the jump is bounded by 0.119 × (justAbove − Freigrenze), which over a
+    // 1 EUR base step is at most ~0.12 EUR.
+    const baseGap = justAbove - justBelow
+    expect(soliJustAbove - soliJustBelow).toBeLessThanOrEqual(0.119 * baseGap + 1)
+  })
+
+  it('reaches the regular 5.5% rate well above the taper zone', () => {
+    // At ~250k EUR salary the soli should match 5.5 % × base within rounding.
+    const result = calculatePapResultFromRE4(250_000, { year: 2026, solidarity: true })
+    expect(result.solz).toBe(Math.round(result.base * 0.055))
+  })
+
+  it('is monotone non-decreasing across the threshold', () => {
+    let prev = -1
+    for (let salary = 70_000; salary <= 110_000; salary += 500) {
+      const s = soli(salary)
+      expect(s).toBeGreaterThanOrEqual(prev)
+      prev = s
+    }
   })
 })
