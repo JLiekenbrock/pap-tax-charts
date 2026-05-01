@@ -1,5 +1,6 @@
 import React from 'react'
 import { PapOptions } from '../lib/pap'
+import { StklDerivation } from '../lib/stkl'
 
 export type PapExplorerSettings = Required<PapOptions> & {
   income: number
@@ -15,6 +16,7 @@ export type PapExplorerSettings = Required<PapOptions> & {
 type Props = {
   settings: PapExplorerSettings
   onChange: (next: PapExplorerSettings) => void
+  stklDerivation: StklDerivation
 }
 
 function numberValue(value: string) {
@@ -80,7 +82,7 @@ function DeferredRangeInput({
   )
 }
 
-export default function TaxInput({ settings, onChange }: Props) {
+export default function TaxInput({ settings, onChange, stklDerivation }: Props) {
   const update = <K extends keyof PapExplorerSettings>(key: K, value: PapExplorerSettings[K]) => {
     onChange({ ...settings, [key]: value })
   }
@@ -176,20 +178,24 @@ export default function TaxInput({ settings, onChange }: Props) {
           </select>
         </label>
         <label>
-          Tax class
-          <select value={settings.stkl} onChange={(e) => update('stkl', Number(e.target.value) as PapExplorerSettings['stkl'])}>
-            {[1, 2, 3, 4, 5, 6].map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </select>
-        </label>
-        <label>
           Filing
           <select value={settings.filing} onChange={(e) => updateFiling(e.target.value as PapExplorerSettings['filing'])}>
             <option value="single">Single</option>
             <option value="married">Married</option>
           </select>
         </label>
+        <div className="stkl-display">
+          <div className="stkl-display-header">
+            <span className="stkl-label">Steuerklasse</span>
+            <span className="stkl-pills">
+              <span className="stkl-pill stkl-pill-you">You: {stklDerivation.stkl}</span>
+              {stklDerivation.partnerStkl !== null && (
+                <span className="stkl-pill stkl-pill-spouse">Spouse: {stklDerivation.partnerStkl}</span>
+              )}
+            </span>
+          </div>
+          <p className="stkl-reason">{stklDerivation.reason}</p>
+        </div>
         <label>
           Child allowance factor / ZKF
           <input type="number" value={settings.children} min={0} step={0.5} onChange={(e) => update('children', numberValue(e.target.value))} />

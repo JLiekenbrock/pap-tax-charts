@@ -420,3 +420,63 @@ dd {
     flex-direction: column;
   }
 }
+
+.stkl-display {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stkl-display-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stkl-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #111827;
+}
+
+.stkl-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stkl-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #111827;
+}
+
+.stkl-pill-you {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+
+.stkl-pill-spouse {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.stkl-reason {
+  margin: 0;
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.45;
+}
