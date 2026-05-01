@@ -1,6 +1,6 @@
 import React from 'react'
 import TaxInput, { PapExplorerSettings } from './components/TaxInput'
-import TaxChart, { ChartMetric, ChartMode } from './components/TaxChart'
+import TaxChart, { ChartMetric, ChartMode, RateBasis } from './components/TaxChart'
 import Results from './components/Results'
 import { PapCalculationResult, calculatePapResultFromRE4 } from './lib/pap'
 
@@ -50,6 +50,7 @@ export default function App() {
   const [settings, setSettings] = React.useState<PapExplorerSettings>(DEFAULT_SETTINGS)
   const [metrics, setMetrics] = React.useState<ChartMetric[]>(['tax', 'zve', 'vsp'])
   const [chartMode, setChartMode] = React.useState<ChartMode>('lines')
+  const [rateBasis, setRateBasis] = React.useState<RateBasis>('gross')
 
   const normalizedSettings = React.useMemo(() => {
     const rangeMin = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
@@ -96,9 +97,11 @@ export default function App() {
           onMetricsChange={setMetrics}
           chartMode={chartMode}
           onChartModeChange={setChartMode}
+          rateBasis={rateBasis}
+          onRateBasisChange={setRateBasis}
         />
         <div className="visual-pane">
-          <TaxChart series={series} currentIncome={normalizedSettings.income} metrics={metrics} mode={chartMode} />
+          <TaxChart series={series} currentIncome={normalizedSettings.income} metrics={metrics} mode={chartMode} settings={normalizedSettings} rateBasis={rateBasis} />
           <Results result={current} settings={normalizedSettings} />
         </div>
       </section>

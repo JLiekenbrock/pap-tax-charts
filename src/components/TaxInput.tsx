@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChartMetric, ChartMode, CHART_METRICS } from './TaxChart'
+import { ChartMetric, ChartMode, RateBasis, CHART_METRICS } from './TaxChart'
 import { PapOptions } from '../lib/pap'
 
 export type PapExplorerSettings = Required<PapOptions> & {
@@ -20,6 +20,8 @@ type Props = {
   onMetricsChange: (next: ChartMetric[]) => void
   chartMode: ChartMode
   onChartModeChange: (next: ChartMode) => void
+  rateBasis: RateBasis
+  onRateBasisChange: (next: RateBasis) => void
 }
 
 function numberValue(value: string) {
@@ -27,7 +29,51 @@ function numberValue(value: string) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export default function TaxInput({ settings, onChange, metrics, onMetricsChange, chartMode, onChartModeChange }: Props) {
+function DeferredNumberInput({
+  value,
+  min,
+  step,
+  onCommit,
+}: {
+  value: number
+  min?: number
+  step?: number
+  onCommit: (value: number) => void
+}) {
+  const [draft, setDraft] = React.useState(String(value))
+  const [focused, setFocused] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!focused) setDraft(String(value))
+  }, [focused, value])
+
+  const commit = () => {
+    const parsed = Number(draft)
+    if (Number.isFinite(parsed)) {
+      onCommit(parsed)
+    } else {
+      setDraft(String(value))
+    }
+    setFocused(false)
+  }
+
+  return (
+    <input
+      type="number"
+      value={draft}
+      min={min}
+      step={step}
+      onFocus={() => setFocused(true)}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+      }}
+    />
+  )
+}
+
+export default function TaxInput({ settings, onChange, metrics, onMetricsChange, chartMode, onChartModeChange, rateBasis, onRateBasisChange }: Props) {
   const update = <K extends keyof PapExplorerSettings>(key: K, value: PapExplorerSettings[K]) => {
     onChange({ ...settings, [key]: value })
   }
@@ -125,11 +171,11 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
         <div className="two-col">
           <label>
             Min
-            <input type="number" value={settings.rangeMin} min={0} step={1000} onChange={(e) => update('rangeMin', numberValue(e.target.value))} />
+            <DeferredNumberInput value={settings.rangeMin} min={0} step={1000} onCommit={(value) => update('rangeMin', value)} />
           </label>
           <label>
             Max
-            <input type="number" value={settings.rangeMax} min={1000} step={1000} onChange={(e) => update('rangeMax', numberValue(e.target.value))} />
+            <DeferredNumberInput value={settings.rangeMax} min={1000} step={1000} onCommit={(value) => update('rangeMax', value)} />
           </label>
         </div>
         <label>
@@ -219,6 +265,16 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
             Rates
           </button>
         </div>
+        {chartMode === 'rates' && (
+          <div className="segmented-control secondary-control" role="group" aria-label="Rate basis">
+            <button type="button" className={rateBasis === 'gross' ? 'active' : ''} onClick={() => onRateBasisChange('gross')}>
+              Per gross
+            </button>
+            <button type="button" className={rateBasis === 'zve' ? 'active' : ''} onClick={() => onRateBasisChange('zve')}>
+              Per ZVE
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="control-section">

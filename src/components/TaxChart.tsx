@@ -13,7 +13,8 @@ import {
   Legend,
   Filler,
 } from 'chart.js'
-import { PapCalculationResult } from '../lib/pap'
+import { PapCalculationResult, calculatePapResultFromRE4 } from '../lib/pap'
+import { PapExplorerSettings } from './TaxInput'
 
 ChartJS.register(
   CategoryScale,
@@ -75,6 +76,7 @@ const PERCENT_METRICS: MetricConfig[] = [
 ]
 
 export type ChartMode = 'lines' | 'stacked' | 'percent' | 'rates'
+export type RateBasis = 'gross' | 'zve'
 
 const STACKED_PARTS: Array<{
   key: string
@@ -105,12 +107,14 @@ function formatPercent(value: number) {
   return `${Number(value).toFixed(2)}%`
 }
 
-function marginalTaxRate(series: PapCalculationResult[], index: number) {
-  const previous = series[Math.max(0, index - 1)]
-  const next = series[Math.min(series.length - 1, index + 1)]
-  const incomeDelta = next.income - previous.income
-  if (incomeDelta <= 0) return 0
-  return ((next.tax - previous.tax) / incomeDelta) * 100
+function marginalTaxRate(point: PapCalculationResult, settings: PapExplorerSettings, basis: RateBasis) {
+  const delta = 100
+  const lowerIncome = Math.max(0, point.income - delta)
+  const upperIncome = point.income + delta
+  const lower = calculatePapResultFromRE4(lowerIncome, { ...settings, income: lowerIncome })
+  const upper = calculatePapResultFromRE4(upperIncome, { ...settings, income: upperIncome })
+  const basisDelta = basis === 'zve' ? upper.zve - lower.zve : upperIncome - lowerIncome
+  return basisDelta > 0 ? ((upper.tax - lower.tax) / basisDelta) * 100 : 0
 }
 
 const selectedIncomePlugin = {
@@ -164,16 +168,34 @@ export default function TaxChart({
   currentIncome,
   metrics,
   mode,
+  settings,
+  rateBasis,
 }: {
   series: PapCalculationResult[]
   currentIncome: number
   metrics: ChartMetric[]
   mode: ChartMode
+  settings: PapExplorerSettings
+  rateBasis: RateBasis
 }) {
   let selectedIndex = 0
   for (let i = 0; i < series.length; i++) {
     if (Math.abs(series[i].income - currentIncome) < Math.abs(series[selectedIndex]?.income - currentIncome)) selectedIndex = i
   }
+  const ratesSeries = React.useMemo(() => {
+    if (mode !== 'rates' || series.length === 0) return series
+    const minIncome = series[0].income
+    const maxIncome = series[series.length - 1].income
+    const interval = 1000
+    const points: PapCalculationResult[] = []
+    for (let income = minIncome; income <= maxIncome; income += interval) {
+      points.push(calculatePapResultFromRE4(income, { ...settings, income }))
+    }
+    if (points[points.length - 1]?.income !== maxIncome) {
+      points.push(calculatePapResultFromRE4(maxIncome, { ...settings, income: maxIncome }))
+    }
+    return points
+  }, [mode, series, settings])
 
   const data = {
     labels: mode === 'stacked' || mode === 'percent' ? series.map((point) => point.income) : undefined,
@@ -196,7 +218,7 @@ export default function TaxChart({
         ? [
             {
               label: 'Effective tax rate',
-              data: series.map((point) => ({ x: point.income, y: wagePercent(point, point.tax) })),
+              data: ratesSeries.map((point) => ({ x: point.income, y: wagePercent(point, point.tax) })),
               borderColor: '#0F766E',
               backgroundColor: '#0F766E',
               borderWidth: 2.5,
@@ -205,8 +227,8 @@ export default function TaxChart({
               yAxisID: 'yPercent',
             },
             {
-              label: 'Marginal tax rate',
-              data: series.map((point, index) => ({ x: point.income, y: marginalTaxRate(series, index) })),
+              label: rateBasis === 'zve' ? 'Marginal tax rate / ZVE' : 'Marginal tax rate / gross',
+              data: ratesSeries.map((point) => ({ x: point.income, y: marginalTaxRate(point, settings, rateBasis) })),
               borderColor: '#DC2626',
               backgroundColor: '#DC2626',
               borderWidth: 2.5,
@@ -295,8 +317,7 @@ export default function TaxChart({
         position: 'right' as const,
         title: { display: true, text: mode === 'rates' ? 'Tax rate' : '% of wage' },
         min: 0,
-        max: mode === 'percent' ? 100 : undefined,
-        suggestedMax: mode === 'rates' ? 50 : undefined,
+        max: mode === 'percent' || mode === 'rates' ? 100 : undefined,
         ticks: {
           callback: (value: string | number) => `${Number(value).toFixed(1)}%`,
         },

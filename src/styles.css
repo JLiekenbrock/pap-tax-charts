@@ -177,6 +177,11 @@ select:focus {
   color: #ffffff;
 }
 
+.secondary-control {
+  grid-template-columns: 1fr 1fr;
+  margin-top: 10px;
+}
+
 .visual-pane {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
