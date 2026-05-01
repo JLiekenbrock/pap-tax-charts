@@ -95,3 +95,60 @@ describe('Solidaritätszuschlag Milderungszone (SolZG §4)', () => {
     }
   })
 })
+
+describe('Private health insurance (PKV)', () => {
+  const baseOptions = {
+    year: 2026,
+    filing: 'single' as const,
+    children: 0,
+    solidarity: false,
+    churchRate: 0,
+  }
+
+  it('overrides vspKrankenPflege with (premium - employer subsidy) for pkv > 0', () => {
+    // EUR 600/month premium, EUR 300/month subsidy → EUR 3,600/year deductible.
+    const r = calculatePapResultFromRE4(60_000, {
+      ...baseOptions,
+      pkv: 1,
+      pkpv: 60_000, // cents/month
+      pkpvagz: 30_000,
+    })
+    expect(r.vspKrankenPflege).toBeCloseTo(3_600, 0)
+  })
+
+  it('produces an income-independent vspKrankenPflege under PKV', () => {
+    // Unlike GKV (which scales with capped income), PKV is a flat amount.
+    const opts = { ...baseOptions, pkv: 1 as const, pkpv: 70_000, pkpvagz: 35_000 }
+    const r1 = calculatePapResultFromRE4(40_000, opts)
+    const r2 = calculatePapResultFromRE4(120_000, opts)
+    expect(r1.vspKrankenPflege).toBeCloseTo(r2.vspKrankenPflege, 0)
+  })
+
+  it('clamps at zero when employer subsidy exceeds the premium', () => {
+    const r = calculatePapResultFromRE4(60_000, {
+      ...baseOptions,
+      pkv: 1,
+      pkpv: 50_000,
+      pkpvagz: 80_000,
+    })
+    expect(r.vspKrankenPflege).toBe(0)
+  })
+
+  it('PKV with low premium increases tax vs equivalent GKV (smaller deduction)', () => {
+    // GKV is the baseline.
+    const gkv = calculatePapResultFromRE4(80_000, {
+      ...baseOptions,
+      pkv: 0,
+      kvz: 1.7,
+    })
+    // Cheap PKV: EUR 400/month premium, EUR 200/month subsidy → EUR 2,400/yr deductible.
+    const pkv = calculatePapResultFromRE4(80_000, {
+      ...baseOptions,
+      pkv: 1,
+      pkpv: 40_000,
+      pkpvagz: 20_000,
+    })
+    expect(pkv.vspKrankenPflege).toBeLessThan(gkv.vspKrankenPflege)
+    expect(pkv.tax).toBeGreaterThan(gkv.tax)
+  })
+})

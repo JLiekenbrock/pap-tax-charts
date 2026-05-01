@@ -106,6 +106,21 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
     }
   }
 
+  const updatePkv = (mode: PapExplorerSettings['pkv']) => {
+    if (mode === 0) {
+      onChange({ ...settings, pkv: mode })
+      return
+    }
+    // Switching from GKV to PKV: seed sensible monthly defaults if the user
+    // has never entered any. EUR 600/month premium, EUR 300/month subsidy.
+    onChange({
+      ...settings,
+      pkv: mode,
+      pkpv: settings.pkpv || 60000,
+      pkpvagz: settings.pkpvagz || 30000,
+    })
+  }
+
   const updateKindergeld = (enabled: boolean) => {
     onChange({
       ...settings,
@@ -241,21 +256,86 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
       <div className="control-section">
         <h2>Insurance</h2>
         <label>
-          KV Zusatzbeitrag %
-          <input type="number" value={settings.kvz} min={0} step={0.1} onChange={(e) => update('kvz', numberValue(e.target.value))} />
+          Health insurance
+          <select
+            value={settings.pkv}
+            onChange={(e) => updatePkv(Number(e.target.value) as PapExplorerSettings['pkv'])}
+          >
+            <option value={0}>Gesetzlich (GKV)</option>
+            <option value={1}>Privat (PKV)</option>
+            <option value={2}>Privat + Beihilfe (Beamte)</option>
+          </select>
         </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={settings.pvs === 1} onChange={(e) => update('pvs', e.target.checked ? 1 : 0)} />
-          Saxony care rate
-        </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={settings.pvz === 1} onChange={(e) => update('pvz', e.target.checked ? 1 : 0)} />
-          Childless care surcharge
-        </label>
-        <label>
-          Care child reduction
-          <input type="number" value={settings.pva} min={0} max={4} step={1} onChange={(e) => update('pva', numberValue(e.target.value))} />
-        </label>
+
+        {settings.pkv === 0 ? (
+          <>
+            <label>
+              KV Zusatzbeitrag %
+              <input
+                type="number"
+                value={settings.kvz}
+                min={0}
+                step={0.1}
+                onChange={(e) => update('kvz', numberValue(e.target.value))}
+              />
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.pvs === 1}
+                onChange={(e) => update('pvs', e.target.checked ? 1 : 0)}
+              />
+              Saxony care rate
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={settings.pvz === 1}
+                onChange={(e) => update('pvz', e.target.checked ? 1 : 0)}
+              />
+              Childless care surcharge
+            </label>
+            <label>
+              Care child reduction
+              <input
+                type="number"
+                value={settings.pva}
+                min={0}
+                max={4}
+                step={1}
+                onChange={(e) => update('pva', numberValue(e.target.value))}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              PKV premium (EUR / month)
+              <input
+                type="number"
+                value={Math.round(settings.pkpv / 100)}
+                min={0}
+                step={10}
+                onChange={(e) => update('pkpv', Math.max(0, Math.round(numberValue(e.target.value))) * 100)}
+              />
+            </label>
+            <label>
+              Employer subsidy (EUR / month)
+              <input
+                type="number"
+                value={Math.round(settings.pkpvagz / 100)}
+                min={0}
+                step={10}
+                onChange={(e) => update('pkpvagz', Math.max(0, Math.round(numberValue(e.target.value))) * 100)}
+              />
+            </label>
+            <p className="insurance-hint">
+              {settings.pkv === 1
+                ? 'PKV employees pay the full premium minus an employer subsidy. The Arbeitgeberzuschuss is statutorily capped at 50 % of the premium, and at half the maximum GKV contribution (≈ EUR 471 / month in 2026).'
+                : 'Beihilfeberechtigte (Beamte) only insure the share not covered by Beihilfe — typically ~30 % for active officials, ~30 % for retirees with families, etc. Enter that residual premium here.'}
+            </p>
+          </>
+        )}
       </div>
 
     </aside>
