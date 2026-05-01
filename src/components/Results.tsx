@@ -1,5 +1,6 @@
 import React from 'react'
 import { PapCalculationResult } from '../lib/pap'
+import { actualContributions } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
 
 function eur(value: number) {
@@ -23,18 +24,19 @@ export default function Results({
   vspInComposition: boolean
   onVspInCompositionChange: (next: boolean) => void
 }) {
+  const socialContributions = actualContributions(result)
   const incomeAfterTax = Math.max(0, result.totalIncome - result.tax)
-  const takeHomeCash = Math.max(0, result.totalIncome - result.tax - result.vsp)
+  const takeHomeCash = Math.max(0, result.totalIncome - result.tax - socialContributions)
   const kindergeld = settings.includeKindergeld ? settings.kindergeldChildren * KINDERGELD_MONTHLY_2026 * 12 : 0
   const investmentTaxTotal = result.investmentTax + result.investmentSolz + result.investmentChurch
 
   // Pure tax rate (0 below the Grundfreibetrag/Steueruntergrenze).
   const salaryTaxRate = result.income > 0 ? (result.payrollTax / result.income) * 100 : 0
   const totalTaxRate = result.totalIncome > 0 ? (result.tax / result.totalIncome) * 100 : 0
-  // Combined burden including VSP (social contributions). Even at 0 tax this
-  // is non-zero because VSP is still owed.
-  const salaryBurdenRate = result.income > 0 ? ((result.payrollTax + result.vsp) / result.income) * 100 : 0
-  const totalBurdenRate = result.totalIncome > 0 ? ((result.tax + result.vsp) / result.totalIncome) * 100 : 0
+  // Combined burden including actual social contributions (RV+KV+PV+AV).
+  // Even at 0 tax this is non-zero because contributions are still owed.
+  const salaryBurdenRate = result.income > 0 ? ((result.payrollTax + socialContributions) / result.income) * 100 : 0
+  const totalBurdenRate = result.totalIncome > 0 ? ((result.tax + socialContributions) / result.totalIncome) * 100 : 0
 
   const rows = [
     ['Tax', eur(result.tax)],

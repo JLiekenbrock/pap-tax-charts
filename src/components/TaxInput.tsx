@@ -288,8 +288,11 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
           <button type="button" className={chartMode === 'rates' ? 'active' : ''} onClick={() => onChartModeChange('rates')}>
             Rates
           </button>
+          <button type="button" className={chartMode === 'decomposition' ? 'active' : ''} onClick={() => onChartModeChange('decomposition')}>
+            Decomposition
+          </button>
         </div>
-        {chartMode === 'rates' && (
+        {(chartMode === 'rates' || chartMode === 'decomposition') && (
           <div className="segmented-control secondary-control" role="group" aria-label="Rate basis">
             <button type="button" className={rateBasis === 'gross' ? 'active' : ''} onClick={() => onRateBasisChange('gross')}>
               Per gross
