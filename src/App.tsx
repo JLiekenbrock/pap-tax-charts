@@ -57,6 +57,7 @@ export default function App() {
   const [rateBasis, setRateBasis] = React.useState<RateBasis>('gross')
   const [vspInRates, setVspInRates] = React.useState(true)
   const [vspInComposition, setVspInComposition] = React.useState(true)
+  const [investmentInRates, setInvestmentInRates] = React.useState(true)
 
   const stklDerivation = React.useMemo(
     () =>
@@ -159,6 +160,7 @@ export default function App() {
             rateBasis={rateBasis}
             vspInRates={vspInRates}
             vspInComposition={vspInComposition}
+            investmentInRates={investmentInRates}
           />
           <Results
             result={current}
@@ -167,6 +169,8 @@ export default function App() {
             onVspInRatesChange={setVspInRates}
             vspInComposition={vspInComposition}
             onVspInCompositionChange={setVspInComposition}
+            investmentInRates={investmentInRates}
+            onInvestmentInRatesChange={setInvestmentInRates}
           />
           <TaxTips
             result={current}

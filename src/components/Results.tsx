@@ -16,6 +16,8 @@ export default function Results({
   onVspInRatesChange,
   vspInComposition,
   onVspInCompositionChange,
+  investmentInRates,
+  onInvestmentInRatesChange,
 }: {
   result: PapCalculationResult
   settings: PapExplorerSettings
@@ -23,6 +25,8 @@ export default function Results({
   onVspInRatesChange: (next: boolean) => void
   vspInComposition: boolean
   onVspInCompositionChange: (next: boolean) => void
+  investmentInRates: boolean
+  onInvestmentInRatesChange: (next: boolean) => void
 }) {
   const socialContributions = actualContributions(result)
   const incomeAfterTax = Math.max(0, result.totalIncome - result.tax)
@@ -104,6 +108,14 @@ export default function Results({
           onChange={(event) => onVspInCompositionChange(event.target.checked)}
         />
         Include VSP in stacked composition
+      </label>
+      <label className="checkbox-row result-toggle">
+        <input
+          type="checkbox"
+          checked={investmentInRates}
+          onChange={(event) => onInvestmentInRatesChange(event.target.checked)}
+        />
+        Include capital gains in tax rates
       </label>
       <dl>
         {rows.map(([label, value]) => (

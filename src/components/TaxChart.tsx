@@ -20,7 +20,6 @@ import {
   actualContributions,
   marginalDecomposition,
   marginalTaxRate,
-  ratePercent,
 } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
 
@@ -173,6 +172,7 @@ export default function TaxChart({
   rateBasis,
   vspInRates,
   vspInComposition,
+  investmentInRates,
 }: {
   series: PapCalculationResult[]
   currentIncome: number
@@ -182,6 +182,7 @@ export default function TaxChart({
   rateBasis: RateBasis
   vspInRates: boolean
   vspInComposition: boolean
+  investmentInRates: boolean
 }) {
   const lineMetrics = React.useMemo(() => {
     const selected = metrics.map((metric) => metricConfig(metric))
@@ -298,7 +299,8 @@ export default function TaxChart({
         }))
       : mode === 'rates'
         ? (() => {
-            const basisLabel = rateBasis === 'zve' ? 'ZVE' : 'salary'
+            const basisName = rateBasis === 'zve' ? 'ZVE' : 'salary'
+            const basisLabel = investmentInRates ? `${basisName} + investments` : basisName
             // When VSP is in the numerator we're plotting the combined burden,
             // not just tax. Make that explicit so a non-zero value below the
             // Grundfreibetrag does not look like a tax-rate spike.
@@ -306,18 +308,26 @@ export default function TaxChart({
               ? `Effective burden tax + VSP (% of ${basisLabel})`
               : `Effective tax rate (% of ${basisLabel})`
             const marginalLabel = vspInRates
-              ? `Marginal burden tax + VSP (% of ${basisLabel})`
-              : `Marginal tax rate (% of ${basisLabel})`
+              ? `Marginal burden tax + VSP (% of ${basisName})`
+              : `Marginal tax rate (% of ${basisName})`
+            const effectiveRate = (point: PapCalculationResult): number | null => {
+              const taxPart = investmentInRates ? point.tax : point.payrollTax
+              const numerator = vspInRates ? taxPart + actualContributions(point) : taxPart
+              const baseDenominator = rateBasis === 'zve' ? point.zve : point.income
+              const denominator = investmentInRates
+                ? baseDenominator + point.investmentIncome
+                : baseDenominator
+              if (denominator < 1000) return null
+              const rate = (numerator / denominator) * 100
+              if (!Number.isFinite(rate) || rate > 100) return null
+              return rate
+            }
             return [
               {
                 label: effectiveLabel,
                 data: ratesSeries.map((point) => ({
                   x: point.income,
-                  y: ratePercent(
-                    point,
-                    vspInRates ? point.payrollTax + actualContributions(point) : point.payrollTax,
-                    rateBasis,
-                  ),
+                  y: effectiveRate(point),
                 })) as any,
                 borderColor: '#0F766E',
                 backgroundColor: '#0F766E',
