@@ -317,7 +317,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
           const jaeg = jaegFor(settings.year, settings.jaeg)
           const userSalary = settings.filing === 'married' ? settings.income1 : settings.income
           const meetsJaeg = userSalary >= jaeg
-          const pkvEmployeeBlocked = settings.pkv === 1 && !meetsJaeg
+          const pkvEmployeeBlocked = settings.pkv === 1 && !meetsJaeg && !settings.beamtenMode
           return (
             <>
               <label>
@@ -332,13 +332,24 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
                   <option value={2}>Privat + Beihilfe (Beamte)</option>
                 </select>
               </label>
-              <p className="insurance-hint">
-                Versicherungspflichtgrenze (JAEG) {settings.year}: EUR {jaeg.toLocaleString()}/year. Employees may only switch from GKV to PKV once their gross salary exceeds this threshold. Beamte and the self-employed are exempt.
-              </p>
-              {pkvEmployeeBlocked && (
-                <p className="insurance-warning">
-                  ⚠ Your salary of EUR {userSalary.toLocaleString()}/year is below the JAEG of EUR {jaeg.toLocaleString()}/year. As a regular employee you cannot opt out of GKV into PKV. The model is still computing PKV numbers, but this scenario is not legally possible without changing employment status (e.g. becoming self-employed or a civil servant).
+              {settings.beamtenMode ? (
+                <p className="insurance-hint">
+                  <strong>Beamtenmodus</strong> fixiert <code>pkv=2</code> (Privat + Beihilfe). Im PAP ist die Kranken-/Pflege-Vorsorgepauschale wie bei PKV:{' '}
+                  <strong>Jahresbetrag = 12 × (Prämie − Zuschuss Dienstherr)</strong> in EUR. Die{' '}
+                  <strong>Beihilfe</strong> selbst steht nicht als eigener EUR-Betrag in der Formel — typischerweise trägst du die{' '}
+                  <em>Rest-KV</em> nach Beihilfe (oder die volle Vertragsprämie, wenn du den staatlichen Anteil komplett als „Zuschuss“ erfasst). GKV und JAEG spielen hier keine Rolle.
                 </p>
+              ) : (
+                <>
+                  <p className="insurance-hint">
+                    Versicherungspflichtgrenze (JAEG) {settings.year}: EUR {jaeg.toLocaleString()}/year. Employees may only switch from GKV to PKV once their gross salary exceeds this threshold. Beamte and the self-employed are exempt.
+                  </p>
+                  {pkvEmployeeBlocked && (
+                    <p className="insurance-warning">
+                      ⚠ Your salary of EUR {userSalary.toLocaleString()}/year is below the JAEG of EUR {jaeg.toLocaleString()}/year. As a regular employee you cannot opt out of GKV into PKV. The model is still computing PKV numbers, but this scenario is not legally possible without changing employment status (e.g. becoming self-employed or a civil servant).
+                    </p>
+                  )}
+                </>
               )}
             </>
           )
@@ -387,7 +398,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
         ) : (
           <>
             <label>
-              PKV premium (EUR / month)
+              {settings.beamtenMode ? 'PKV monthly premium (full contract gross, EUR)' : 'PKV premium (EUR / month)'}
               <input
                 type="number"
                 value={Math.round(settings.pkpv / 100)}
@@ -397,7 +408,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               />
             </label>
             <label>
-              Employer subsidy (EUR / month)
+              {settings.beamtenMode ? 'Dienstherren-Zuschuss (EUR / month)' : 'Employer subsidy (EUR / month)'}
               <input
                 type="number"
                 value={Math.round(settings.pkpvagz / 100)}
@@ -407,9 +418,11 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               />
             </label>
             <p className="insurance-hint">
-              {settings.pkv === 1
-                ? 'PKV employees pay the full premium minus an employer subsidy. The Arbeitgeberzuschuss is statutorily capped at 50 % of the premium, and at half the maximum GKV contribution (≈ EUR 471 / month in 2026).'
-                : 'Beihilfeberechtigte (Beamte) only insure the share not covered by Beihilfe — typically ~30 % for active officials, ~30 % for retirees with families, etc. Enter that residual premium here.'}
+              {settings.beamtenMode
+                ? 'PAP subtracts only (Prämie − Dienstherren-Zuschuss) for the deductible Vorsorge amount. If your tariff already reflects Beihilfe (Resttarif), put that residual premium in the first field and set the Zuschuss to 0 — or split Grossprämie vs. state contribution however matches your payslip.'
+                : settings.pkv === 1
+                  ? 'PKV employees pay the full premium minus an employer subsidy. The Arbeitgeberzuschuss is statutorily capped at 50 % of the premium, and at half the maximum GKV contribution (≈ EUR 471 / month in 2026).'
+                  : 'Beihilfeberechtigte (Beamte) only insure the share not covered by Beihilfe — typically ~30 % for active officials, ~30 % for retirees with families, etc. Enter that residual premium here.'}
             </p>
           </>
         )}
