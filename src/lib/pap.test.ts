@@ -182,6 +182,36 @@ describe('Private health insurance (PKV)', () => {
     expect(jaegFor(2026)).toBe(JAEG_2026)
   })
 
+  it('Beamtenmodus bundle: no RV or ALV contributions in VSP path', () => {
+    const beamt = calculatePapResultFromRE4(80_000, {
+      year: 2026,
+      filing: 'single',
+      children: 0,
+      solidarity: false,
+      churchRate: 0,
+      krv: 1,
+      alv: 1,
+      pkv: 2,
+      pkpv: 25_000,
+      pkpvagz: 12_500,
+    })
+    const angest = calculatePapResultFromRE4(80_000, {
+      year: 2026,
+      filing: 'single',
+      children: 0,
+      solidarity: false,
+      churchRate: 0,
+      pkv: 0,
+      kvz: 1.7,
+    })
+    expect(beamt.vspRenten).toBe(0)
+    expect(beamt.vspArbeitslosen).toBe(0)
+    expect(angest.vspRenten).toBeGreaterThan(0)
+    expect(angest.vspArbeitslosen).toBeGreaterThan(0)
+    // Higher ZVE for employee when Beamter has small PKV rest vs high GKV deduction
+    expect(beamt.zve).toBeGreaterThanOrEqual(angest.zve - 1)
+  })
+
   it('PKV with low premium increases tax vs equivalent GKV (smaller deduction)', () => {
     // GKV is the baseline.
     const gkv = calculatePapResultFromRE4(80_000, {

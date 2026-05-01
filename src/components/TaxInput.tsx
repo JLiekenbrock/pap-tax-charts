@@ -18,6 +18,8 @@ export type PapExplorerSettings = CorePapSettings & {
   rangeMin: number
   rangeMax: number
   proMode: boolean
+  /** Beamte: no RV/ALV; Krankheit typisch Restkosten-PKV nach Beihilfe (pkv=2). */
+  beamtenMode: boolean
   bbgKvPv?: number
   bbgRvAlv?: number
   jaeg?: number
@@ -117,6 +119,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
   }
 
   const updatePkv = (mode: PapExplorerSettings['pkv']) => {
+    if (settings.beamtenMode && mode !== 2) return
     if (mode === 0) {
       onChange({ ...settings, pkv: mode })
       return
@@ -129,6 +132,31 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
       pkpv: settings.pkpv || 60000,
       pkpvagz: settings.pkpvagz || 30000,
     })
+  }
+
+  const toggleBeamtenMode = (enabled: boolean) => {
+    if (enabled) {
+      onChange({
+        ...settings,
+        beamtenMode: true,
+        krv: 1,
+        alv: 1,
+        pkv: 2,
+        // Residual PKV after Beihilfe — order of magnitude for active Beamte; adjust freely.
+        pkpv: settings.pkpv > 0 ? settings.pkpv : 25_000,
+        pkpvagz: settings.pkpvagz > 0 ? settings.pkpvagz : 12_500,
+      })
+    } else {
+      onChange({
+        ...settings,
+        beamtenMode: false,
+        krv: 0,
+        alv: 0,
+        pkv: 0,
+        pkpv: 0,
+        pkpvagz: 0,
+      })
+    }
   }
 
   const updateKindergeld = (enabled: boolean) => {
@@ -221,6 +249,22 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
           </div>
           <p className="stkl-reason">{stklDerivation.reason}</p>
         </div>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={settings.beamtenMode}
+            onChange={(e) => toggleBeamtenMode(e.target.checked)}
+          />
+          Beamtenmodus
+        </label>
+        {settings.beamtenMode && (
+          <p className="beamten-hint">
+            Modelliert die typische Eckpunkte für Beamte im Lohnsteuer-PAP: keine Beiträge zur gesetzlichen{' '}
+            <strong>Rentenversicherung</strong> und <strong>Arbeitslosenversicherung</strong>; Krankheit über{' '}
+            <strong>Beihilfe</strong> und verbleibende <strong>private Krankenversicherung</strong> (Restpremie minus{' '}
+            Dienstherren-Zuschuss). PAP-Felder: <code>krv=1</code>, <code>alv=1</code>, <code>pkv=2</code>. Kein Anspruch auf Vollständigkeit — Details hängen vom Dienstverhältnis ab.
+          </p>
+        )}
         <label>
           Child allowance factor / ZKF
           <input type="number" value={settings.children} min={0} step={0.5} onChange={(e) => update('children', numberValue(e.target.value))} />
@@ -276,6 +320,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
                 Health insurance
                 <select
                   value={settings.pkv}
+                  disabled={settings.beamtenMode}
                   onChange={(e) => updatePkv(Number(e.target.value) as PapExplorerSettings['pkv'])}
                 >
                   <option value={0}>Gesetzlich (GKV)</option>

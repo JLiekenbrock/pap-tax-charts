@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS: PapExplorerSettings = {
   pkpv: 0,
   pkpvagz: 0,
   proMode: false,
+  beamtenMode: false,
 }
 
 export default function App() {
@@ -124,6 +125,7 @@ export default function App() {
     normalizedSettings.investmentIncome,
     normalizedSettings.includeKindergeld,
     normalizedSettings.kindergeldChildren,
+    normalizedSettings.beamtenMode,
   ])
   const series = React.useMemo(() => buildSeries(seriesSettings), [seriesSettings])
 
