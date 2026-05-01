@@ -6,6 +6,11 @@ export type RateBasis = 'gross' | 'zve'
  * Actual social-contribution amount the employee pays — i.e. the sum of
  * pension (RV), health+care (KV+PV) and unemployment (AV) shares.
  *
+ * For PKV (`pkv` > 0), the health+care slice is the **net** annual PKV cost
+ * (premium minus employer subsidy) carried in `vspKrankenPflege`, not GKV %.
+ * For Beamte presets, RV/ALV are usually off (`krv`/`alv`), so those terms
+ * can be zero and only the PKV net remains in this sum.
+ *
  * Note this differs from `point.vsp`: the PAP `vsp` field is the
  * tax-deductible Vorsorgepauschale used inside the income-tax formula,
  * which can underestimate the AV share when the vsphb path is capped at

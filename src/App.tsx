@@ -3,6 +3,7 @@ import TaxInput, { PapExplorerSettings } from './components/TaxInput'
 import TaxChart, { ChartMetric, ChartMode, RateBasis } from './components/TaxChart'
 import ChartControls from './components/ChartControls'
 import Results from './components/Results'
+import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
 import { PapCalculationResult, calculatePapResultFromRE4 } from './lib/pap'
 import { deriveStkl } from './lib/stkl'
@@ -156,6 +157,7 @@ export default function App() {
             investmentInRates={investmentInRates}
             onInvestmentInRatesChange={setInvestmentInRates}
           />
+          <PrivilegeCheck result={current} settings={normalizedSettings} />
           <TaxTips
             result={current}
             options={normalizedSettings}
