@@ -197,9 +197,105 @@ select:focus {
   grid-template-columns: minmax(0, 1fr) 280px;
   grid-template-areas:
     "controls controls"
-    "chart    results";
+    "chart    results"
+    "tips     tips";
   gap: 18px;
   align-items: start;
+}
+
+.tax-tips {
+  grid-area: tips;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.tax-tips h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.tax-tips-blurb {
+  margin: 0 0 14px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.tax-tips-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.tip-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  padding: 14px;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tip-card h3 {
+  margin: 0;
+  font-size: 15px;
+  flex: 1 1 auto;
+}
+
+.tip-card p {
+  margin: 0;
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.45;
+}
+
+.tip-emoji {
+  font-size: 20px;
+}
+
+.tip-savings {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  white-space: nowrap;
+}
+
+.tip-serious {
+  border-left: 3px solid #047857;
+}
+
+.tip-cheeky {
+  border-left: 3px solid #c2410c;
+}
+
+.tip-cheeky .tip-savings {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.tip-absurd {
+  border-left: 3px dashed #6b7280;
+  background: #f3f4f6;
+}
+
+.tip-absurd .tip-savings {
+  background: #e5e7eb;
+  color: #4b5563;
 }
 
 .chart-controls {

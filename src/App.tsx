@@ -3,6 +3,7 @@ import TaxInput, { PapExplorerSettings } from './components/TaxInput'
 import TaxChart, { ChartMetric, ChartMode, RateBasis } from './components/TaxChart'
 import ChartControls from './components/ChartControls'
 import Results from './components/Results'
+import TaxTips from './components/TaxTips'
 import { PapCalculationResult, calculatePapResultFromRE4 } from './lib/pap'
 
 function clamp(value: number, min: number, max: number) {
@@ -155,6 +156,7 @@ export default function App() {
             vspInComposition={vspInComposition}
             onVspInCompositionChange={setVspInComposition}
           />
+          <TaxTips result={current} options={normalizedSettings} />
         </div>
       </section>
     </main>
