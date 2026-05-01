@@ -221,6 +221,120 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
         )}
       </div>
 
+      <div className="control-section pro-mode-section">
+        <h2>
+          Pro mode
+          <label className="checkbox-row pro-mode-toggle">
+            <input
+              type="checkbox"
+              checked={settings.proMode}
+              onChange={(e) =>
+                onChange({
+                  ...settings,
+                  proMode: e.target.checked,
+                  // Clear overrides when leaving pro mode so the calc cleanly
+                  // falls back to year defaults.
+                  ...(e.target.checked
+                    ? {}
+                    : { bbgKvPv: undefined, bbgRvAlv: undefined, jaeg: undefined }),
+                })
+              }
+            />
+            Enable
+          </label>
+        </h2>
+        {settings.proMode && (
+          <>
+            <p className="pro-mode-hint">
+              Override the social-insurance ceilings and the JAEG to model future reform scenarios. Leave a field blank to fall back to the {settings.year} default.
+            </p>
+            <div className="pro-mode-presets">
+              <button
+                type="button"
+                onClick={() =>
+                  onChange({
+                    ...settings,
+                    bbgKvPv: undefined,
+                    bbgRvAlv: undefined,
+                    jaeg: undefined,
+                  })
+                }
+              >
+                Reset to {settings.year} defaults
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onChange({
+                    ...settings,
+                    bbgKvPv: 73_350,
+                    bbgRvAlv: undefined,
+                    jaeg: 81_000,
+                  })
+                }
+              >
+                Apply Kabinett 2026 reform
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onChange({
+                    ...settings,
+                    bbgKvPv: 73_350,
+                    bbgRvAlv: 121_680,
+                    jaeg: 81_000,
+                  })
+                }
+              >
+                + Klingbeil pension cap (2× → ~2.4×)
+              </button>
+            </div>
+            <label>
+              BBG KV/PV (annual EUR)
+              <input
+                type="number"
+                value={settings.bbgKvPv ?? ''}
+                placeholder={settings.year === 2026 ? '69750' : '66150'}
+                min={0}
+                step={1000}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  update('bbgKvPv', raw === '' ? undefined : Math.max(0, Math.round(numberValue(raw))))
+                }}
+              />
+            </label>
+            <label>
+              BBG RV/AV (annual EUR)
+              <input
+                type="number"
+                value={settings.bbgRvAlv ?? ''}
+                placeholder={settings.year === 2026 ? '101400' : '96600'}
+                min={0}
+                step={1000}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  update('bbgRvAlv', raw === '' ? undefined : Math.max(0, Math.round(numberValue(raw))))
+                }}
+              />
+            </label>
+            <label>
+              JAEG (annual EUR)
+              <input
+                type="number"
+                value={settings.jaeg ?? ''}
+                placeholder={settings.year === 2026 ? '77400' : '73800'}
+                min={0}
+                step={1000}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  update('jaeg', raw === '' ? undefined : Math.max(0, Math.round(numberValue(raw))))
+                }}
+              />
+            </label>
+          </>
+        )}
+      </div>
+
       <div className="control-section">
         <h2>Tax inputs</h2>
         <label>
@@ -424,120 +538,6 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
                   ? 'PKV employees pay the full premium minus an employer subsidy. The Arbeitgeberzuschuss is statutorily capped at 50 % of the premium, and at half the maximum GKV contribution (≈ EUR 471 / month in 2026).'
                   : 'Beihilfeberechtigte (Beamte) only insure the share not covered by Beihilfe — typically ~30 % for active officials, ~30 % for retirees with families, etc. Enter that residual premium here.'}
             </p>
-          </>
-        )}
-      </div>
-
-      <div className="control-section">
-        <h2>
-          Pro mode
-          <label className="checkbox-row pro-mode-toggle">
-            <input
-              type="checkbox"
-              checked={settings.proMode}
-              onChange={(e) =>
-                onChange({
-                  ...settings,
-                  proMode: e.target.checked,
-                  // Clear overrides when leaving pro mode so the calc cleanly
-                  // falls back to year defaults.
-                  ...(e.target.checked
-                    ? {}
-                    : { bbgKvPv: undefined, bbgRvAlv: undefined, jaeg: undefined }),
-                })
-              }
-            />
-            Enable
-          </label>
-        </h2>
-        {settings.proMode && (
-          <>
-            <p className="pro-mode-hint">
-              Override the social-insurance ceilings and the JAEG to model future reform scenarios. Leave a field blank to fall back to the {settings.year} default.
-            </p>
-            <div className="pro-mode-presets">
-              <button
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...settings,
-                    bbgKvPv: undefined,
-                    bbgRvAlv: undefined,
-                    jaeg: undefined,
-                  })
-                }
-              >
-                Reset to {settings.year} defaults
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...settings,
-                    bbgKvPv: 73_350,
-                    bbgRvAlv: undefined,
-                    jaeg: 81_000,
-                  })
-                }
-              >
-                Apply Kabinett 2026 reform
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...settings,
-                    bbgKvPv: 73_350,
-                    bbgRvAlv: 121_680,
-                    jaeg: 81_000,
-                  })
-                }
-              >
-                + Klingbeil pension cap (2× → ~2.4×)
-              </button>
-            </div>
-            <label>
-              BBG KV/PV (annual EUR)
-              <input
-                type="number"
-                value={settings.bbgKvPv ?? ''}
-                placeholder={settings.year === 2026 ? '69750' : '66150'}
-                min={0}
-                step={1000}
-                onChange={(e) => {
-                  const raw = e.target.value
-                  update('bbgKvPv', raw === '' ? undefined : Math.max(0, Math.round(numberValue(raw))))
-                }}
-              />
-            </label>
-            <label>
-              BBG RV/AV (annual EUR)
-              <input
-                type="number"
-                value={settings.bbgRvAlv ?? ''}
-                placeholder={settings.year === 2026 ? '101400' : '96600'}
-                min={0}
-                step={1000}
-                onChange={(e) => {
-                  const raw = e.target.value
-                  update('bbgRvAlv', raw === '' ? undefined : Math.max(0, Math.round(numberValue(raw))))
-                }}
-              />
-            </label>
-            <label>
-              JAEG (annual EUR)
-              <input
-                type="number"
-                value={settings.jaeg ?? ''}
-                placeholder={settings.year === 2026 ? '77400' : '73800'}
-                min={0}
-                step={1000}
-                onChange={(e) => {
-                  const raw = e.target.value
-                  update('jaeg', raw === '' ? undefined : Math.max(0, Math.round(numberValue(raw))))
-                }}
-              />
-            </label>
           </>
         )}
       </div>

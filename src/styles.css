@@ -72,6 +72,18 @@ button {
 
 .control-panel {
   padding: 16px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  align-self: start;
+}
+
+/* Keep scenario overrides visible while scrolling the long input column */
+.control-panel .pro-mode-section {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #ffffff;
+  box-shadow: 0 8px 12px -8px rgba(0, 0, 0, 0.12);
 }
 
 .control-section + .control-section {
