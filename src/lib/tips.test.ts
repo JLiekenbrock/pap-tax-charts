@@ -127,3 +127,100 @@ describe('tips: ordering', () => {
     if (firstAbsurd !== -1 && firstCheeky !== -1) expect(firstAbsurd).toBeGreaterThan(firstCheeky)
   })
 })
+
+describe('tips: Rürup / Basisrente', () => {
+  it('appears at incomes where the marginal rate is meaningful', () => {
+    const t = tipsFor(80_000)
+    const ruerup = t.find((tip) => tip.id === 'ruerup-pension')
+    expect(ruerup).toBeTruthy()
+    expect(ruerup!.savings).toBeGreaterThan(0)
+  })
+
+  it('does not appear at incomes too low for a non-trivial benefit', () => {
+    const t = tipsFor(20_000)
+    expect(ids(t)).not.toContain('ruerup-pension')
+  })
+
+  it('savings scale with marginal rate (higher income → higher saving)', () => {
+    const t1 = tipsFor(60_000).find((tip) => tip.id === 'ruerup-pension')!
+    const t2 = tipsFor(120_000).find((tip) => tip.id === 'ruerup-pension')!
+    expect(t2.savings!).toBeGreaterThan(t1.savings!)
+  })
+})
+
+describe('tips: charitable donation', () => {
+  it('appears with a EUR 1,000 example saving at typical incomes', () => {
+    const t = tipsFor(70_000)
+    const donation = t.find((tip) => tip.id === 'donation')
+    expect(donation).toBeTruthy()
+    expect(donation!.savings).toBeGreaterThan(150)
+    expect(donation!.savings).toBeLessThan(500)
+  })
+
+  it('is silent at low incomes', () => {
+    const t = tipsFor(15_000)
+    expect(ids(t)).not.toContain('donation')
+  })
+})
+
+describe('tips: Werbungskosten itemization', () => {
+  it('appears at typical incomes with computed savings on EUR 1,000 extra', () => {
+    const t = tipsFor(70_000)
+    const wk = t.find((tip) => tip.id === 'werbungskosten')
+    expect(wk).toBeTruthy()
+    expect(wk!.savings).toBeGreaterThan(150)
+  })
+
+  it('is silent at low incomes', () => {
+    const t = tipsFor(15_000)
+    expect(ids(t)).not.toContain('werbungskosten')
+  })
+})
+
+describe('tips: § 35a Haushaltsnahe & Handwerker', () => {
+  it('appears once the user owes meaningful tax', () => {
+    const t = tipsFor(50_000)
+    expect(ids(t)).toContain('haushalt-handwerker')
+  })
+
+  it('is silent when there is no tax to reduce', () => {
+    const t = tipsFor(12_000)
+    expect(ids(t)).not.toContain('haushalt-handwerker')
+  })
+
+  it('is informational (no specific savings number)', () => {
+    const t = tipsFor(50_000)
+    const tip = t.find((tip) => tip.id === 'haushalt-handwerker')!
+    expect(tip.savings).toBeUndefined()
+  })
+})
+
+describe('tips: splitting benefit for two-earner married couples', () => {
+  function tipsForCouple(income1: number, income2: number) {
+    const options: PapOptions = { ...baseOptions, filing: 'married' as const }
+    const result = calculatePapResultFromRE4(income1 + income2, options)
+    return computeTips({ result, options, partner1Income: income1, partner2Income: income2 })
+  }
+
+  it('appears when partners earn very different amounts', () => {
+    const t = tipsForCouple(120_000, 20_000)
+    const splitting = t.find((tip) => tip.id === 'splitting-benefit')
+    expect(splitting).toBeTruthy()
+    expect(splitting!.savings).toBeGreaterThan(1000)
+  })
+
+  it('vanishes when partners earn the same amount (no benefit from splitting)', () => {
+    const t = tipsForCouple(60_000, 60_000)
+    expect(ids(t)).not.toContain('splitting-benefit')
+  })
+
+  it('does not appear for single filers', () => {
+    const t = tipsFor(140_000)
+    expect(ids(t)).not.toContain('splitting-benefit')
+  })
+
+  it('does not appear if one partner has zero income (covered by marry-zero)', () => {
+    const t = tipsForCouple(120_000, 0)
+    expect(ids(t)).not.toContain('splitting-benefit')
+  })
+})

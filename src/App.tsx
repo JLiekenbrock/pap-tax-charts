@@ -154,7 +154,12 @@ export default function App() {
             vspInComposition={vspInComposition}
             onVspInCompositionChange={setVspInComposition}
           />
-          <TaxTips result={current} options={normalizedSettings} />
+          <TaxTips
+            result={current}
+            options={normalizedSettings}
+            partner1Income={normalizedSettings.income1}
+            partner2Income={normalizedSettings.income2}
+          />
         </div>
       </section>
     </main>

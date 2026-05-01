@@ -1,5 +1,5 @@
 import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from './pap'
-import { actualContributions } from './rates'
+import { actualContributions, marginalTaxRate } from './rates'
 
 export type TipTone = 'serious' | 'cheeky' | 'absurd'
 
@@ -15,11 +15,13 @@ export type Tip = {
 
 const eur = (value: number) => `EUR ${Math.round(value).toLocaleString()}`
 
-type TipInputs = {
+export type TipInputs = {
   result: PapCalculationResult
   options: PapOptions
-  /** Total monthly Kindergeld * 12 currently received (or 0). Reused for break-even messaging. */
-  kindergeldAnnual?: number
+  /** Earnings of partner 1 in a married filing (used to quantify splitting benefit). */
+  partner1Income?: number
+  /** Earnings of partner 2. */
+  partner2Income?: number
 }
 
 /**
@@ -30,13 +32,22 @@ function counterfactual(income: number, base: PapOptions, overrides: PapOptions)
   return calculatePapResultFromRE4(income, { ...base, ...overrides })
 }
 
-export function computeTips({ result, options }: TipInputs): Tip[] {
+export function computeTips({ result, options, partner1Income, partner2Income }: TipInputs): Tip[] {
   const tips: Tip[] = []
   const filing = options.filing ?? 'single'
   const children = options.children ?? 0
   const investmentIncome = options.investmentIncome ?? 0
   const churchRate = options.churchRate ?? 0
   const solidarity = options.solidarity ?? false
+
+  // Marginal payroll-tax rate per EUR of additional ZVE, expressed as a
+  // fraction (e.g. 0.37 = 37 %). This is the headline multiplier for any
+  // Sonderausgabenabzug (Rürup, donations, Werbungskosten beyond the
+  // EUR 1,230 Pauschbetrag, etc.). Includes Soli + church.
+  // `marginalTaxRate` returns a percentage, so divide by 100.
+  const marginalZveRate = result.income > 0
+    ? marginalTaxRate(result.income, options, 'zve', { delta: 1000, includeVspInRate: false }) / 100
+    : 0
 
   // ---- Serious wins -------------------------------------------------------
 
@@ -89,6 +100,89 @@ export function computeTips({ result, options }: TipInputs): Tip[] {
       description: `Your income tax base is only ${eur(overshoot)} above the Solidaritätszuschlag Freigrenze (${eur(solzFree)}). You are still inside the Milderungszone (11.9 % taper), so any extra Werbungskosten, Sonderausgaben, or a Riester contribution that pushes the base back below ${eur(solzFree)} eliminates the surcharge entirely.`,
       tone: 'serious',
     })
+  }
+
+  // Rürup / Basisrente — 100 % deductible Sonderausgabe, cap ≈ EUR 28k/yr.
+  if (result.income > 30_000 && marginalZveRate > 0.15) {
+    const ruerup = 6_000
+    const savings = marginalZveRate * ruerup
+    if (savings > 200) {
+      tips.push({
+        id: 'ruerup-pension',
+        emoji: '🏦',
+        title: 'Pay into a Rürup / Basisrente',
+        description: `Contributions to a Basisrente are 100 % deductible as Sonderausgaben (cap ~EUR 28,000/yr in 2026). At your marginal rate of ${(marginalZveRate * 100).toFixed(1)} %, paying ${eur(ruerup)} into one would reduce this year's tax by about ${eur(savings)}. The money is locked until retirement, but the deduction is real.`,
+        savings,
+        tone: 'serious',
+      })
+    }
+  }
+
+  // Charitable donations — Sonderausgaben, deductible up to 20 % of GdE.
+  if (result.income > 25_000 && marginalZveRate > 0.15) {
+    const donation = 1_000
+    const savings = marginalZveRate * donation
+    if (savings > 100) {
+      tips.push({
+        id: 'donation',
+        emoji: '🎁',
+        title: 'Donate to a recognised charity',
+        description: `Spenden up to 20 % of your Gesamtbetrag der Einkünfte are fully deductible. A ${eur(donation)} donation costs you only ${eur(donation - savings)} after the ${eur(savings)} tax saving at your marginal rate of ${(marginalZveRate * 100).toFixed(1)} %.`,
+        savings,
+        tone: 'serious',
+      })
+    }
+  }
+
+  // Werbungskosten beyond the 1,230 EUR (single) / 1,230 EUR Pauschbetrag.
+  if (result.income > 25_000 && marginalZveRate > 0.15) {
+    const extra = 1_000
+    const savings = marginalZveRate * extra
+    if (savings > 100) {
+      tips.push({
+        id: 'werbungskosten',
+        emoji: '🚗',
+        title: 'Itemize Werbungskosten beyond the EUR 1,230 Pauschbetrag',
+        description: `Pendlerpauschale (0.30 EUR/km, 0.38 EUR/km from km 21), home-office Tagespauschale (6 EUR/day, max 1,260 EUR/yr), professional literature, training, work clothes, second-degree fees — all stack above the Pauschbetrag. Each additional ${eur(extra)} of receipts saves about ${eur(savings)} in tax.`,
+        savings,
+        tone: 'serious',
+      })
+    }
+  }
+
+  // § 35a EStG — direct Steuerermäßigung (not a deduction). High leverage.
+  if (result.tax > 1_000) {
+    tips.push({
+      id: 'haushalt-handwerker',
+      emoji: '🔧',
+      title: '§ 35a — Haushaltsnahe & Handwerkerleistungen',
+      description: `Bills for cleaners, gardeners, household help: 20 % deducted directly from your tax (max ${eur(4000)}/yr). Craftsmen invoices for repairs, painters, heating service, etc.: 20 % off, max ${eur(1200)}/yr. That is up to ${eur(5200)}/yr in tax credits — far more efficient than any Sonderausgabenabzug because it cuts the tax bill EUR-for-EUR rather than the taxable income.`,
+      tone: 'serious',
+    })
+  }
+
+  // Splitting benefit visualisation for already-married two-earner couples.
+  if (
+    filing === 'married' &&
+    typeof partner1Income === 'number' &&
+    typeof partner2Income === 'number' &&
+    partner1Income > 0 &&
+    partner2Income > 0
+  ) {
+    const single1 = calculatePapResultFromRE4(partner1Income, { ...options, filing: 'single' })
+    const single2 = calculatePapResultFromRE4(partner2Income, { ...options, filing: 'single' })
+    const benefit = single1.tax + single2.tax - result.tax
+    if (benefit > 100) {
+      tips.push({
+        id: 'splitting-benefit',
+        emoji: '👫',
+        title: 'You already win via Ehegattensplitting',
+        description: `If both of you filed individually, your combined annual tax would be ${eur(single1.tax + single2.tax)} (${eur(single1.tax)} + ${eur(single2.tax)}). Joint filing brings it down to ${eur(result.tax)} — splitting saves you ${eur(benefit)}/year. ` +
+          `Steuerklassen 3/5 vs 4/4 only shifts when the tax is withheld; the annual total is identical.`,
+        savings: benefit,
+        tone: 'serious',
+      })
+    }
   }
 
   // ---- Cheeky lifestyle suggestions --------------------------------------

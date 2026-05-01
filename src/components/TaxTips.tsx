@@ -5,6 +5,8 @@ import { Tip, computeTips } from '../lib/tips'
 type Props = {
   result: PapCalculationResult
   options: PapOptions
+  partner1Income?: number
+  partner2Income?: number
 }
 
 const toneClass: Record<Tip['tone'], string> = {
@@ -13,8 +15,11 @@ const toneClass: Record<Tip['tone'], string> = {
   absurd: 'tip-card tip-absurd',
 }
 
-export default function TaxTips({ result, options }: Props) {
-  const tips = React.useMemo(() => computeTips({ result, options }), [result, options])
+export default function TaxTips({ result, options, partner1Income, partner2Income }: Props) {
+  const tips = React.useMemo(
+    () => computeTips({ result, options, partner1Income, partner2Income }),
+    [result, options, partner1Income, partner2Income],
+  )
 
   if (tips.length === 0) {
     return null
