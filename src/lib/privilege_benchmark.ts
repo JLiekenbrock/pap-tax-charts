@@ -48,7 +48,7 @@ export const MIN_DESTATIS_LADDER_EVALUATION_GROSS_EUR = 12_000
  * Vollzeitbeschäftigte (Anteil mit diesem Verdienst oder weniger).
  * Quelle: Statistisches Bundesamt, Pressemitteilung Nr. 134 vom 10. April 2025.
  */
-const DESTATIS_FT_GROSS_ANNUAL_2024: ReadonlyArray<{ p: number; eur: number }> = [
+export const DESTATIS_FULLTIME_WAGE_PERCENTILES_2024: ReadonlyArray<{ readonly p: number; readonly eur: number }> = [
   { p: 10, eur: 32_526 },
   { p: 20, eur: 37_944 },
   { p: 30, eur: 42_700 },
@@ -60,6 +60,16 @@ const DESTATIS_FT_GROSS_ANNUAL_2024: ReadonlyArray<{ p: number; eur: number }> =
   { p: 90, eur: 97_680 },
   { p: 99, eur: 213_286 },
 ]
+
+/**
+ * X-axis cap when aligning the chart with the full Destatis ladder: highest published threshold (p99).
+ * Destatis Pressemitteilung 134/2025 tabulates percentiles through p99 only; we treat this as the chart
+ * “p100” ceiling so p99 rugs and income series are not clipped below peer tails.
+ */
+export const DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 =
+  DESTATIS_FULLTIME_WAGE_PERCENTILES_2024[DESTATIS_FULLTIME_WAGE_PERCENTILES_2024.length - 1]!.eur
+
+const DESTATIS_FT_GROSS_ANNUAL_2024 = DESTATIS_FULLTIME_WAGE_PERCENTILES_2024
 
 export const PRIVILEGE_INCOME_SOURCE_LABEL =
   'Destatis Verdiensterhebung 2024 (Vollzeit, inkl. Sonderzahlungen)'

@@ -12,6 +12,8 @@ type Props = {
   filing?: PapExplorerSettings['filing']
   marriedSocialSplit?: boolean
   onMarriedSocialSplitChange?: (next: boolean) => void
+  showDestatisIncomePercentiles: boolean
+  onShowDestatisIncomePercentilesChange: (next: boolean) => void
 }
 
 const MODES: Array<{ value: ChartMode; label: string }> = [
@@ -32,6 +34,8 @@ export default function ChartControls({
   filing = 'single',
   marriedSocialSplit = false,
   onMarriedSocialSplitChange,
+  showDestatisIncomePercentiles,
+  onShowDestatisIncomePercentilesChange,
 }: Props) {
   const toggleMetric = (metric: ChartMetric) => {
     if (metrics.includes(metric)) {
@@ -73,6 +77,20 @@ export default function ChartControls({
               Per ZVE
             </button>
           </div>
+        </div>
+      )}
+
+      {chartMode !== 'stacked' && chartMode !== 'percent' && (
+        <div className="chart-controls-row">
+          <div className="chart-controls-label">Ref</div>
+          <label className="checkbox-row metric-option">
+            <input
+              type="checkbox"
+              checked={showDestatisIncomePercentiles}
+              onChange={(e) => onShowDestatisIncomePercentilesChange(e.target.checked)}
+            />
+            Destatis wage percentile rugs (p10–p99)
+          </label>
         </div>
       )}
 

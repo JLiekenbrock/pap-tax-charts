@@ -206,7 +206,7 @@ select:focus {
 
 .visual-pane {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 38vw, 540px);
   grid-template-areas:
     "controls controls"
     "chart    results"
@@ -354,6 +354,74 @@ select:focus {
   gap: 10px;
 }
 
+.year-compare-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.year-compare-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 22px;
+}
+
+.year-compare-selects {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+}
+
+.year-compare-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.year-compare-field span {
+  font-weight: 600;
+  color: #374151;
+}
+
+.year-compare-field select {
+  min-width: 5.5rem;
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #111827;
+}
+
+.year-compare-swap {
+  align-self: center;
+  margin-bottom: 2px;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: #374151;
+}
+
+.year-compare-swap:hover {
+  background: #f3f4f6;
+}
+
+.year-compare-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #6b7280;
+  max-width: 36rem;
+}
+
 .chart-controls-label {
   font-size: 12px;
   font-weight: 600;
@@ -398,11 +466,42 @@ select:focus {
   grid-area: chart;
   min-height: 560px;
   padding: 14px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Fixed plot height so the Destatis caption + rug padding cannot stretch the Y-axis area. */
+.tax-chart-canvas-host {
+  height: 480px;
+  min-height: 280px;
+  flex-shrink: 0;
+  position: relative;
+  width: 100%;
+}
+
+.chart-percentile-caption {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #64748b;
+  max-width: 52rem;
+}
+
+.chart-percentile-caption--muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.chart-percentile-caption__note {
+  font-size: 10px;
+  color: #94a3b8;
 }
 
 .results-panel {
   grid-area: results;
   padding: 16px;
+  min-width: 0;
 }
 
 .result-kpi {
@@ -441,7 +540,81 @@ select:focus {
   padding-bottom: 12px;
 }
 
-dl {
+.results-year-compare {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.results-year-compare .year-compare-pair {
+  padding-left: 0;
+}
+
+.results-table-wrap {
+  margin-top: 4px;
+  overflow-x: visible;
+}
+
+.results-compare-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.results-compare-table thead th:nth-child(1) {
+  width: 40%;
+}
+
+.results-compare-table thead th:nth-child(2),
+.results-compare-table thead th:nth-child(3),
+.results-compare-table thead th:nth-child(4) {
+  width: 20%;
+}
+
+.results-compare-table th,
+.results-compare-table td {
+  padding: 7px 8px;
+  text-align: right;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.results-compare-table thead th:first-child {
+  text-align: left;
+}
+
+.results-compare-table th[scope="row"] {
+  text-align: left;
+  font-weight: 500;
+  color: #4b5563;
+  padding-right: 10px;
+}
+
+.results-compare-table thead th {
+  font-weight: 600;
+  color: #111827;
+  background: #f9fafb;
+  border-bottom: 1px solid #d1d5db;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.results-compare-table tbody th {
+  background: #fafafa;
+}
+
+.results-compare-delta {
+  font-variant-numeric: tabular-nums;
+  color: #374151;
+}
+
+.results-dl {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px 12px;
@@ -449,11 +622,11 @@ dl {
   font-size: 13px;
 }
 
-dt {
+.results-dl dt {
   color: #4b5563;
 }
 
-dd {
+.results-dl dd {
   margin: 0;
   font-weight: 600;
   text-align: right;

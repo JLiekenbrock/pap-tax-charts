@@ -2,18 +2,30 @@ import React from 'react'
 import TaxInput, { PapExplorerSettings } from './components/TaxInput'
 import TaxChart, { ChartMetric, ChartMode, RateBasis, toPapOptions } from './components/TaxChart'
 import ChartControls from './components/ChartControls'
-import Results from './components/Results'
+import Results, { type PapChartYear } from './components/Results'
 import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
 import Glossary from './components/Glossary'
 import { PapCalculationResult, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4 } from './lib/pap'
 import { deriveStkl } from './lib/stkl'
+import { DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 } from './lib/privilege_benchmark'
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
 const SERIES_POINTS = 180
+
+function papSnapshotAtIncome(settings: PapExplorerSettings, year: number): PapCalculationResult {
+  const opts = toPapOptions({ ...settings, year })
+  if (settings.filing === 'married') {
+    return calculatePapResultFromRE4(settings.income1, {
+      ...opts,
+      partnerRe4: settings.income2,
+    })
+  }
+  return calculatePapResultFromRE4(settings.income, opts)
+}
 
 function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
   const min = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
@@ -67,6 +79,10 @@ export default function App() {
   const [vspInComposition, setVspInComposition] = React.useState(true)
   const [investmentInRates, setInvestmentInRates] = React.useState(true)
   const [marriedSocialSplit, setMarriedSocialSplit] = React.useState(false)
+  const [showDestatisIncomePercentiles, setShowDestatisIncomePercentiles] = React.useState(true)
+  const [yearCompareEnabled, setYearCompareEnabled] = React.useState(false)
+  const [compareYearA, setCompareYearA] = React.useState<PapChartYear>(2025)
+  const [compareYearB, setCompareYearB] = React.useState<PapChartYear>(2026)
 
   const stklDerivation = React.useMemo(
     () =>
@@ -85,7 +101,8 @@ export default function App() {
     const filingIncome = settings.filing === 'married' ? income1 + income2 : Math.max(0, settings.income)
     const highestIncome = Math.max(filingIncome, income1 + income2, 10000)
     const rangeMin = 0
-    const rangeMax = Math.max(30000, Math.ceil((highestIncome * 1.5 + 10000) / 1000) * 1000)
+    const rangeMaxBase = Math.max(30000, Math.ceil((highestIncome * 1.5 + 10000) / 1000) * 1000)
+    const rangeMax = Math.max(rangeMaxBase, DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024)
     const income = clamp(filingIncome, rangeMin, rangeMax)
     const kindergeldChildren = Math.max(0, Math.floor(settings.kindergeldChildren))
     return {
@@ -114,6 +131,47 @@ export default function App() {
   }, [normalizedSettings, papOpts])
   const series = React.useMemo(() => buildSeries(normalizedSettings), [normalizedSettings])
 
+  const resultCompareA = React.useMemo(
+    () =>
+      yearCompareEnabled && compareYearA !== compareYearB
+        ? papSnapshotAtIncome(normalizedSettings, compareYearA)
+        : null,
+    [normalizedSettings, yearCompareEnabled, compareYearA, compareYearB],
+  )
+
+  const resultCompareB = React.useMemo(
+    () =>
+      yearCompareEnabled && compareYearA !== compareYearB
+        ? papSnapshotAtIncome(normalizedSettings, compareYearB)
+        : null,
+    [normalizedSettings, yearCompareEnabled, compareYearA, compareYearB],
+  )
+
+  const otherPapYear = React.useCallback((y: PapChartYear): PapChartYear => (y === 2025 ? 2026 : 2025), [])
+
+  const onCompareYearAChange = React.useCallback(
+    (y: PapChartYear) => {
+      setCompareYearA(y)
+      setCompareYearB((b) => (b === y ? otherPapYear(y) : b))
+    },
+    [otherPapYear],
+  )
+
+  const onCompareYearBChange = React.useCallback(
+    (y: PapChartYear) => {
+      setCompareYearB(y)
+      setCompareYearA((a) => (a === y ? otherPapYear(y) : a))
+    },
+    [otherPapYear],
+  )
+
+  const onSwapCompareYears = React.useCallback(() => {
+    const nextA = compareYearB
+    const nextB = compareYearA
+    setCompareYearA(nextA)
+    setCompareYearB(nextB)
+  }, [compareYearA, compareYearB])
+
   return (
     <main className="app-shell">
       <section className="app-header">
@@ -141,6 +199,8 @@ export default function App() {
             filing={normalizedSettings.filing}
             marriedSocialSplit={marriedSocialSplit}
             onMarriedSocialSplitChange={setMarriedSocialSplit}
+            showDestatisIncomePercentiles={showDestatisIncomePercentiles}
+            onShowDestatisIncomePercentilesChange={setShowDestatisIncomePercentiles}
           />
           <TaxChart
             series={series}
@@ -153,6 +213,7 @@ export default function App() {
             vspInComposition={vspInComposition}
             investmentInRates={investmentInRates}
             marriedSocialSplit={marriedSocialSplit}
+            showDestatisIncomePercentiles={showDestatisIncomePercentiles}
           />
           <Results
             result={current}
@@ -163,6 +224,15 @@ export default function App() {
             onVspInCompositionChange={setVspInComposition}
             investmentInRates={investmentInRates}
             onInvestmentInRatesChange={setInvestmentInRates}
+            yearCompareEnabled={yearCompareEnabled}
+            onYearCompareEnabledChange={setYearCompareEnabled}
+            compareYearA={compareYearA}
+            compareYearB={compareYearB}
+            onCompareYearAChange={onCompareYearAChange}
+            onCompareYearBChange={onCompareYearBChange}
+            onSwapCompareYears={onSwapCompareYears}
+            resultCompareA={resultCompareA}
+            resultCompareB={resultCompareB}
           />
           <PrivilegeCheck result={current} settings={normalizedSettings} />
           <TaxTips

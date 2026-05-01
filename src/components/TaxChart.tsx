@@ -29,6 +29,8 @@ import {
   marginalTaxRate,
 } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
+import { DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024, DESTATIS_FULLTIME_WAGE_PERCENTILES_2024, PRIVILEGE_INCOME_SOURCE_LABEL } from '../lib/privilege_benchmark'
+import { createIncomePercentileRugsPlugin } from '../lib/chart_income_percentile_rugs'
 
 export function toPapOptions(settings: PapExplorerSettings): PapOptions {
   const {
@@ -198,6 +200,7 @@ export default function TaxChart({
   vspInComposition,
   investmentInRates,
   marriedSocialSplit = false,
+  showDestatisIncomePercentiles = true,
 }: {
   series: PapCalculationResult[]
   currentIncome: number
@@ -210,6 +213,8 @@ export default function TaxChart({
   investmentInRates: boolean
   /** When married, split RV/KV/AV lines across earners (lines mode, social metrics only). */
   marriedSocialSplit?: boolean
+  /** Background bands from Destatis individual full-time gross percentiles (single RE4 x-axis only). */
+  showDestatisIncomePercentiles?: boolean
 }) {
   const lineMetrics = React.useMemo(() => {
     const selected = metrics.map((metric) => metricConfig(metric))
@@ -265,6 +270,30 @@ export default function TaxChart({
     if (raw <= 0) return 10_000
     return Math.ceil((raw * 1.03) / 5000) * 5000
   }, [settings.rangeMax, settings.investmentIncome])
+
+  const showPercentileRugs = showDestatisIncomePercentiles
+
+  const categoryIncomesForRugs = React.useMemo(
+    () => (mode === 'stacked' || mode === 'percent' ? series.map((p) => p.income) : null),
+    [mode, series],
+  )
+
+  const incomePercentilePlugin = React.useMemo(
+    () =>
+      createIncomePercentileRugsPlugin({
+        enabled: showPercentileRugs,
+        rangeMin: settings.rangeMin,
+        rangeMax: settings.rangeMax,
+        markers: DESTATIS_FULLTIME_WAGE_PERCENTILES_2024,
+        categoryIncomes: categoryIncomesForRugs,
+      }),
+    [showPercentileRugs, settings.rangeMin, settings.rangeMax, categoryIncomesForRugs],
+  )
+
+  const chartPlugins = React.useMemo(
+    () => [incomePercentilePlugin, selectedIncomePlugin],
+    [incomePercentilePlugin, selectedIncomePlugin],
+  )
 
   let selectedIndex = 0
   for (let i = 0; i < series.length; i++) {
@@ -527,6 +556,10 @@ export default function TaxChart({
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      // Keep small: rug labels sit just above ticks; large padding steals chartArea height.
+      padding: { bottom: showDestatisIncomePercentiles ? 8 : 6 },
+    },
     interaction: {
       mode: 'nearest' as const,
       intersect: false,
@@ -613,13 +646,27 @@ export default function TaxChart({
 
   // Chart.js often fails to refresh stacked/category bar data when only values
   // change; include year (and mode) in the key so toggling tax year remounts.
-  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}-${marriedSocialSplit}`
+  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}-${marriedSocialSplit}-${showDestatisIncomePercentiles}-${showPercentileRugs}`
 
   return (
     <section className="chart-panel">
-      {mode === 'stacked' || mode === 'percent'
-        ? <Bar key={chartInstanceKey} data={data as any} options={options} plugins={[selectedIncomePlugin]} />
-        : <Line key={chartInstanceKey} data={data as any} options={options} plugins={[selectedIncomePlugin]} />}
+      {showDestatisIncomePercentiles ? (
+        <p className="chart-percentile-caption">
+          Rug ticks: {PRIVILEGE_INCOME_SOURCE_LABEL} — p10 … p99 gross (share of full-time employees earning
+          less). RE4 axis runs to EUR {DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024.toLocaleString()} (Destatis
+          top published percentile, used as p100 chart cap).{' '}
+          {settings.filing === 'married' ? (
+            <em className="chart-percentile-caption__note">
+              X-axis is household RE4 here; rugs still use the individual FT distribution for reference.
+            </em>
+          ) : null}
+        </p>
+      ) : null}
+      <div className="tax-chart-canvas-host">
+        {mode === 'stacked' || mode === 'percent'
+          ? <Bar key={chartInstanceKey} data={data as any} options={options} plugins={chartPlugins} />
+          : <Line key={chartInstanceKey} data={data as any} options={options} plugins={chartPlugins} />}
+      </div>
     </section>
   )
 }
