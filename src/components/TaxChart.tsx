@@ -31,12 +31,11 @@ function toPapOptions(settings: PapExplorerSettings): PapOptions {
     income2: _income2,
     rangeMin: _rangeMin,
     rangeMax: _rangeMax,
-    points: _points,
     includeKindergeld: _includeKindergeld,
     kindergeldChildren: _kindergeldChildren,
     ...rest
   } = settings
-  void _income; void _income1; void _income2; void _rangeMin; void _rangeMax; void _points; void _includeKindergeld; void _kindergeldChildren
+  void _income; void _income1; void _income2; void _rangeMin; void _rangeMax; void _includeKindergeld; void _kindergeldChildren
   return rest
 }
 

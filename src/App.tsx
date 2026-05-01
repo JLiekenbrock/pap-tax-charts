@@ -10,13 +10,14 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
+const SERIES_POINTS = 180
+
 function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
   const min = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
   const max = Math.max(min, settings.rangeMax)
-  const points = clamp(settings.points, 2, 1000)
-  const step = points === 1 ? 0 : (max - min) / (points - 1)
+  const step = (max - min) / (SERIES_POINTS - 1)
 
-  return Array.from({ length: points }, (_, index) => {
+  return Array.from({ length: SERIES_POINTS }, (_, index) => {
     const income = Math.round(min + step * index)
     return calculatePapResultFromRE4(income, settings)
   })
@@ -31,7 +32,6 @@ const DEFAULT_SETTINGS: PapExplorerSettings = {
   kindergeldChildren: 0,
   rangeMin: 0,
   rangeMax: 120000,
-  points: 180,
   year: 2026,
   filing: 'single',
   stkl: 1,
@@ -75,7 +75,6 @@ export default function App() {
       income2,
       investmentIncome: Math.max(0, settings.investmentIncome),
       kindergeldChildren,
-      points: clamp(settings.points, 2, 1000),
     }
   }, [settings])
 
@@ -92,7 +91,6 @@ export default function App() {
   }), [
     normalizedSettings.rangeMin,
     normalizedSettings.rangeMax,
-    normalizedSettings.points,
     normalizedSettings.year,
     normalizedSettings.filing,
     normalizedSettings.stkl,

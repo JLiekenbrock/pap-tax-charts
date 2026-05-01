@@ -10,7 +10,6 @@ export type PapExplorerSettings = Required<PapOptions> & {
   kindergeldChildren: number
   rangeMin: number
   rangeMax: number
-  points: number
 }
 
 type Props = {
@@ -165,10 +164,6 @@ export default function TaxInput({ settings, onChange }: Props) {
             />
           </div>
         )}
-        <label>
-          Points
-          <input type="number" value={settings.points} min={2} max={1000} step={10} onChange={(e) => update('points', numberValue(e.target.value))} />
-        </label>
       </div>
 
       <div className="control-section">
