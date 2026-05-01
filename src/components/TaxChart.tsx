@@ -5,7 +5,6 @@ import {
   ChartDataset,
   CategoryScale,
   LinearScale,
-  LogarithmicScale,
   PointElement,
   LineElement,
   BarElement,
@@ -30,7 +29,13 @@ import {
   marginalTaxRate,
 } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
-import { DESTATIS_CHART_INCOME_RUG_MARKERS_2024, DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024, PRIVILEGE_INCOME_SOURCE_LABEL } from '../lib/privilege_benchmark'
+import {
+  DESTATIS_CHART_INCOME_RUG_MARKERS_2024,
+  DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024,
+  grossAtDeStatisPercentile,
+  individualIncomePercentileDeStatis,
+  PRIVILEGE_INCOME_SOURCE_LABEL,
+} from '../lib/privilege_benchmark'
 import { createIncomePercentileRugsPlugin } from '../lib/chart_income_percentile_rugs'
 
 export function toPapOptions(settings: PapExplorerSettings): PapOptions {
@@ -51,7 +56,6 @@ export function toPapOptions(settings: PapExplorerSettings): PapOptions {
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  LogarithmicScale,
   PointElement,
   LineElement,
   BarElement,
@@ -124,6 +128,7 @@ function earnerMetricValue(metric: ChartMetric, slice: MarriedEarnerSlice): numb
 }
 
 export type ChartMode = 'lines' | 'stacked' | 'percent' | 'rates' | 'decomposition'
+
 export type { RateBasis }
 
 function metricConfig(metric: ChartMetric) {
@@ -138,7 +143,7 @@ function formatPercent(value: number) {
   return `${Number(value).toFixed(2)}%`
 }
 
-/** Short axis labels for log salary scale (avoids long locale strings colliding at the right). */
+/** Short axis labels for salary EUR tick marks (compact k/M). */
 function formatCompactSalaryAxisEur(eur: number): string {
   const v = Math.round(eur)
   if (!Number.isFinite(v)) return ''
@@ -153,12 +158,13 @@ function formatCompactSalaryAxisEur(eur: number): string {
   return `${av}`
 }
 
-/** Minimum RE4 on chart when x-axis is logarithmic (must be &gt; 0; 10k avoids wasting width on 1k–10k). */
-export const CHART_LOG_SALARY_AXIS_MIN_EUR = 10_000
-
 const selectedIncomePlugin = {
   id: 'selectedIncomeLine',
-  afterDatasetsDraw(chart: ChartJS, _args: unknown, pluginOptions: { income?: number; selectedIndex?: number }) {
+  afterDatasetsDraw(
+    chart: ChartJS,
+    _args: unknown,
+    pluginOptions: { income?: number; selectedIndex?: number; selectedXCoordinate?: number },
+  ) {
     const income = pluginOptions.income
     if (income == null || !Number.isFinite(income)) return
 
@@ -167,17 +173,16 @@ const selectedIncomePlugin = {
     if (!xScale || !chartArea) return
 
     const selectedIndex = pluginOptions.selectedIndex
-    let xValue: number = income
-    if (typeof selectedIndex !== 'number' && xScale.type === 'logarithmic') {
-      const lo =
-        typeof xScale.min === 'number' && Number.isFinite(xScale.min) && xScale.min > 0
-          ? xScale.min
-          : CHART_LOG_SALARY_AXIS_MIN_EUR
-      xValue = Math.max(income, lo)
+    const selectedX = pluginOptions.selectedXCoordinate
+
+    let x: number
+    if (typeof selectedIndex === 'number') {
+      x = xScale.getPixelForValue(selectedIndex)
+    } else if (typeof selectedX === 'number' && Number.isFinite(selectedX)) {
+      x = xScale.getPixelForValue(selectedX)
+    } else {
+      x = xScale.getPixelForValue(income)
     }
-    const x = typeof selectedIndex === 'number'
-      ? xScale.getPixelForValue(selectedIndex)
-      : xScale.getPixelForValue(xValue)
     if (x < chartArea.left || x > chartArea.right) return
 
     ctx.save()
@@ -228,8 +233,7 @@ export default function TaxChart({
   vspInComposition,
   investmentInRates,
   marriedSocialSplit = false,
-  showDestatisIncomePercentiles = true,
-  showLogScaleX = false,
+  percentileAxis = false,
 }: {
   series: PapCalculationResult[]
   currentIncome: number
@@ -242,12 +246,28 @@ export default function TaxChart({
   investmentInRates: boolean
   /** When married, split RV/KV/AV lines across earners (lines mode, social metrics only). */
   marriedSocialSplit?: boolean
-  /** Background bands from Destatis individual full-time gross percentiles (single RE4 x-axis only). */
-  showDestatisIncomePercentiles?: boolean
-  /** Logarithmic salary (RE4) x-axis for line-style modes only (not stacked/percent bars). */
-  showLogScaleX?: boolean
+  /**
+   * When true (non-stacked/non-percent charts), salary x-axis uses Destatis percentile rank with uniform spacing per percentile.
+   */
+  percentileAxis?: boolean
 }) {
-  const logScaleXActive = showLogScaleX && mode !== 'stacked' && mode !== 'percent'
+  const usesLineScatterX = mode !== 'stacked' && mode !== 'percent'
+  const percentileScaleXActive = percentileAxis && usesLineScatterX
+
+  const lineXPercentileBounds = React.useMemo(() => {
+    if (!percentileScaleXActive) return { minP: 0, maxP: 100 }
+    const lo = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
+    const hi = Math.max(lo, settings.rangeMax)
+    const minP = individualIncomePercentileDeStatis(lo)
+    const maxP = individualIncomePercentileDeStatis(hi)
+    return minP <= maxP ? { minP, maxP } : { minP: maxP, maxP: minP }
+  }, [percentileScaleXActive, settings.rangeMin, settings.rangeMax])
+
+  const salaryToLineDatasetX = React.useCallback(
+    (salaryEuro: number): number =>
+      percentileScaleXActive ? individualIncomePercentileDeStatis(Math.max(0, salaryEuro)) : salaryEuro,
+    [percentileScaleXActive],
+  )
   const isCategoryX = mode === 'stacked' || mode === 'percent'
   const lineMetrics = React.useMemo(() => {
     const selected = metrics.map((metric) => metricConfig(metric))
@@ -304,28 +324,25 @@ export default function TaxChart({
     return Math.ceil((raw * 1.03) / 5000) * 5000
   }, [settings.rangeMax, settings.investmentIncome])
 
-  const showPercentileRugs = showDestatisIncomePercentiles
-
   const categoryIncomesForRugs = React.useMemo(
     () => (mode === 'stacked' || mode === 'percent' ? series.map((p) => p.income) : null),
     [mode, series],
   )
 
-  const clipXMinEur = logScaleXActive
-    ? Math.max(CHART_LOG_SALARY_AXIS_MIN_EUR, settings.rangeMin)
-    : Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
+  const clipXMinEur = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
   const clipXMaxEur = Math.max(clipXMinEur, settings.rangeMax)
 
   const incomePercentilePlugin = React.useMemo(
     () =>
       createIncomePercentileRugsPlugin({
-        enabled: showPercentileRugs,
+        enabled: true,
         clipXMinEur,
         clipXMaxEur,
         markers: DESTATIS_CHART_INCOME_RUG_MARKERS_2024,
         categoryIncomes: categoryIncomesForRugs,
+        ...(percentileScaleXActive ? { xFromIncomeEur: individualIncomePercentileDeStatis } : {}),
       }),
-    [showPercentileRugs, clipXMinEur, clipXMaxEur, categoryIncomesForRugs],
+    [clipXMinEur, clipXMaxEur, categoryIncomesForRugs, percentileScaleXActive],
   )
 
   const chartPlugins = React.useMemo(
@@ -343,9 +360,7 @@ export default function TaxChart({
     // Use UI range ends — the main `series` uses rounded steps so the last
     // point can sit short of `rangeMax`, which makes rates/decomposition
     // lines stop before the chart's intended x domain.
-    const minIncome = logScaleXActive
-      ? Math.max(CHART_LOG_SALARY_AXIS_MIN_EUR, settings.rangeMin)
-      : Math.max(0, settings.rangeMin)
+    const minIncome = Math.max(0, settings.rangeMin)
     const maxIncome = Math.max(minIncome, settings.rangeMax)
     const interval = 1000
     const opts = toPapOptions(settings)
@@ -370,7 +385,7 @@ export default function TaxChart({
       )
     }
     return points
-  }, [mode, series.length, settings, logScaleXActive])
+  }, [mode, series.length, settings, usesLineScatterX])
 
   const decompositionRates = React.useMemo(() => {
     if (mode !== 'decomposition') return [] as MarginalDecomposition[]
@@ -465,7 +480,7 @@ export default function TaxChart({
               {
                 label: effectiveLabel,
                 data: ratesSeries.map((point) => ({
-                  x: point.income,
+                  x: salaryToLineDatasetX(point.income),
                   y: effectiveRate(point),
                 })) as any,
                 borderColor: '#0F766E',
@@ -478,7 +493,10 @@ export default function TaxChart({
               },
               {
                 label: marginalLabel,
-                data: ratesSeries.map((point, index) => ({ x: point.income, y: marginalRates[index] })) as any,
+                data: ratesSeries.map((point, index) => ({
+                  x: salaryToLineDatasetX(point.income),
+                  y: marginalRates[index],
+                })) as any,
                 borderColor: '#DC2626',
                 backgroundColor: '#DC2626',
                 borderWidth: 2.5,
@@ -522,7 +540,7 @@ export default function TaxChart({
               return activeLayers.map((layer): ChartDataset<'line'> => ({
                 label: layer.label,
                 data: ratesSeries.map((point, index) => ({
-                  x: point.income,
+                  x: salaryToLineDatasetX(point.income),
                   y: decompositionRates[index]?.[layer.key] ?? 0,
                 })) as any,
                 borderColor: layer.color,
@@ -546,7 +564,7 @@ export default function TaxChart({
                   {
                     label: `${config.label} · earner 1`,
                     data: series.map((point) => ({
-                      x: point.income,
+                      x: salaryToLineDatasetX(point.income),
                       y: point.marriedEarners
                         ? earnerMetricValue(config.key, point.marriedEarners[0])
                         : config.value(point),
@@ -562,7 +580,7 @@ export default function TaxChart({
                   {
                     label: `${config.label} · earner 2`,
                     data: series.map((point) => ({
-                      x: point.income,
+                      x: salaryToLineDatasetX(point.income),
                       y: point.marriedEarners
                         ? earnerMetricValue(config.key, point.marriedEarners[1])
                         : 0,
@@ -580,7 +598,10 @@ export default function TaxChart({
               return [
                 {
                   label: config.label,
-                  data: series.map((point) => ({ x: point.income, y: config.value(point) })) as any,
+                  data: series.map((point) => ({
+                    x: salaryToLineDatasetX(point.income),
+                    y: config.value(point),
+                  })) as any,
                   borderColor: config.color,
                   backgroundColor: config.color,
                   borderWidth: config.key === 'tax' ? 3 : 2,
@@ -593,12 +614,14 @@ export default function TaxChart({
           })(),
   }
 
+  const chartLayoutBottomPad = 8
+
   const options = {
     responsive: true,
     maintainAspectRatio: false,
     layout: {
       // Keep small: rug labels sit just above ticks; large padding steals chartArea height.
-      padding: { bottom: showDestatisIncomePercentiles ? 8 : 6 },
+      padding: { bottom: chartLayoutBottomPad },
     },
     interaction: {
       mode: 'nearest' as const,
@@ -608,10 +631,25 @@ export default function TaxChart({
       selectedIncomeLine: {
         income: currentIncome,
         selectedIndex: mode === 'stacked' || mode === 'percent' ? selectedIndex : undefined,
+        selectedXCoordinate: percentileScaleXActive
+          ? individualIncomePercentileDeStatis(Math.max(0, currentIncome))
+          : undefined,
       },
       legend: { position: 'bottom' as const },
       tooltip: {
         callbacks: {
+          title: (tooltipItems: { parsed: { x?: number }; label?: string }[]) => {
+            if (mode === 'stacked' || mode === 'percent') {
+              return tooltipItems[0]?.label ?? ''
+            }
+            const xv = tooltipItems[0]?.parsed?.x
+            if (xv == null || !Number.isFinite(xv)) return ''
+            if (percentileScaleXActive) {
+              const g = grossAtDeStatisPercentile(xv)
+              return `p${Number(xv).toFixed(1)} (${formatEuro(Math.round(g))} nominal FT median curve)`
+            }
+            return formatEuro(xv)
+          },
           label: (context: any) => {
             const raw = context.raw
             const value = typeof raw === 'number' ? raw : context.parsed.y
@@ -624,16 +662,22 @@ export default function TaxChart({
     },
     scales: {
       x: {
-        type: isCategoryX ? ('category' as const) : logScaleXActive ? ('logarithmic' as const) : ('linear' as const),
+        type: isCategoryX ? ('category' as const) : ('linear' as const),
         title: {
           display: true,
           text: isCategoryX
             ? 'Salary income / RE4 (EUR)'
-            : `Salary income / RE4 (EUR)${logScaleXActive ? ', log scale' : ''}`,
+            : percentileScaleXActive
+              ? `Destatis FT wage percentile (rank p); horizontal spacing uniform in percentile — ${PRIVILEGE_INCOME_SOURCE_LABEL}`
+              : 'Salary income / RE4 (EUR)',
         },
         stacked: mode === 'stacked' || mode === 'percent',
-        min: isCategoryX ? undefined : logScaleXActive ? Math.max(CHART_LOG_SALARY_AXIS_MIN_EUR, settings.rangeMin) : settings.rangeMin,
-        max: isCategoryX ? undefined : settings.rangeMax,
+        min: isCategoryX
+          ? undefined
+          : percentileScaleXActive
+            ? lineXPercentileBounds.minP
+            : settings.rangeMin,
+        max: isCategoryX ? undefined : percentileScaleXActive ? lineXPercentileBounds.maxP : settings.rangeMax,
         grid: {
           display: !isCategoryX,
           drawBorder: true,
@@ -648,16 +692,18 @@ export default function TaxChart({
                 return Number(tickValue).toLocaleString()
               },
             }
-          : logScaleXActive
+          : percentileScaleXActive
             ? {
-                maxTicksLimit: 6,
+                maxTicksLimit: 10,
                 autoSkip: true,
-                autoSkipPadding: 32,
-                maxRotation: 0,
+                autoSkipPadding: 20,
+                maxRotation: 45,
                 minRotation: 0,
                 callback: (value: string | number) => {
-                  const n = Number(value)
-                  return Number.isFinite(n) ? formatCompactSalaryAxisEur(n) : String(value)
+                  const v = Number(value)
+                  if (!Number.isFinite(v)) return String(value)
+                  const g = Math.round(grossAtDeStatisPercentile(v))
+                  return `p${Math.round(v)} (~${formatCompactSalaryAxisEur(g)})`
                 },
               }
             : {
@@ -708,30 +754,37 @@ export default function TaxChart({
 
   // Chart.js often fails to refresh stacked/category bar data when only values
   // change; include year (and mode) in the key so toggling tax year remounts.
-  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}-${marriedSocialSplit}-${showDestatisIncomePercentiles}-${showPercentileRugs}-${logScaleXActive}`
+  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}-${marriedSocialSplit}-${percentileAxis}-${percentileScaleXActive}`
+
+  const marriedScatterNote = settings.filing === 'married' ? (
+    <em className="chart-percentile-caption__note">
+      Scatter x uses household RE4; Destatis percentile reference is individual full-time wages.
+    </em>
+  ) : null
 
   return (
     <section className="chart-panel">
-      {showDestatisIncomePercentiles ? (
+      {percentileScaleXActive ? (
         <p className="chart-percentile-caption">
-          Rug ticks: {PRIVILEGE_INCOME_SOURCE_LABEL} — p10 … p80, then each integer p90–p99 (EUR for p91–p98
-          linear between published p90/p99). RE4 axis runs to EUR{' '}
-          {DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024.toLocaleString()} (Destatis top published percentile,
-          used as p100 chart cap).
-          {logScaleXActive ? (
-            <> X-axis is logarithmic from EUR {CHART_LOG_SALARY_AXIS_MIN_EUR.toLocaleString()}.</>
-          ) : null}{' '}
-          {settings.filing === 'married' ? (
-            <em className="chart-percentile-caption__note">
-              X-axis is household RE4 here; rugs still use the individual FT distribution for reference.
-            </em>
-          ) : null}
-        </p>
-      ) : logScaleXActive ? (
-        <p className="chart-percentile-caption">
-          RE4 x-axis: logarithmic scale (domain from EUR {CHART_LOG_SALARY_AXIS_MIN_EUR.toLocaleString()}).
+          <strong>Percentile x-axis:</strong> horizontal spacing is proportional to percentile rank ({PRIVILEGE_INCOME_SOURCE_LABEL}
+          spline), so each percentile occupies equal width regardless of uneven EUR spacing. Hover shows approximate nominal
+          gross from the inverse curve.{' '}
+          {marriedScatterNote}
         </p>
       ) : null}
+      <p className="chart-percentile-caption">
+        Rug ticks: {PRIVILEGE_INCOME_SOURCE_LABEL} — p10 … p80, then each integer p90–p99 (EUR for p91–p98 linear between
+        published p90/p99). RE4 axis runs to EUR {DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024.toLocaleString()} (Destatis
+        top published percentile, used as p100 chart cap).
+        {percentileScaleXActive ? (
+          <> Rugs align vertically with the percentile grid.</>
+        ) : null}{' '}
+        {!percentileScaleXActive && marriedScatterNote ? (
+          <em className="chart-percentile-caption__note">
+            X-axis is household RE4 here; rugs still use the individual FT distribution for reference.
+          </em>
+        ) : null}
+      </p>
       <div className="tax-chart-canvas-host">
         {mode === 'stacked' || mode === 'percent'
           ? <Bar key={chartInstanceKey} data={data as any} options={options} plugins={chartPlugins} />

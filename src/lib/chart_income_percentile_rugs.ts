@@ -14,6 +14,11 @@ export type IncomePercentileRugOptions = {
    * Each rug snaps to the category whose income is closest to the percentile EUR.
    */
   categoryIncomes: readonly number[] | null
+  /**
+   * When the chart’s x-axis is already in “percentile space” (not raw EUR),
+   * map each marker’s EUR to that x-coordinate before resolving pixels (linear x).
+   */
+  xFromIncomeEur?: (eur: number) => number
 }
 
 const RUG = 'rgba(71, 85, 105, 0.55)'
@@ -39,13 +44,24 @@ function xPixelForIncome(
   lo: number,
   hi: number,
   categoryIncomes: readonly number[] | null,
+  xFromIncomeEur?: (eur: number) => number,
 ): number | null {
   const xScale = chart.scales.x
   if (!xScale) return null
 
   if (xScale.type === 'linear' || xScale.type === 'logarithmic') {
-    if (eur < lo || eur > hi) return null
-    return xScale.getPixelForValue(eur)
+    const xVal = typeof xFromIncomeEur === 'function' ? xFromIncomeEur(eur) : eur
+    if (!Number.isFinite(xVal)) return null
+    if (typeof xFromIncomeEur !== 'function' && (eur < lo || eur > hi)) return null
+    if (typeof xFromIncomeEur === 'function') {
+      const loX = xFromIncomeEur(lo)
+      const hiX = xFromIncomeEur(hi)
+      if (!(Number.isFinite(loX) && Number.isFinite(hiX))) return null
+      const dMin = Math.min(loX, hiX)
+      const dMax = Math.max(loX, hiX)
+      if (xVal < dMin || xVal > dMax) return null
+    }
+    return xScale.getPixelForValue(xVal)
   }
 
   if (xScale.type === 'category' && categoryIncomes && categoryIncomes.length > 0) {
@@ -74,7 +90,7 @@ export function createIncomePercentileRugsPlugin(opts: IncomePercentileRugOption
       const rugUp = 11
       const xs: number[] = []
       for (const m of opts.markers) {
-        const x = xPixelForIncome(chart, m.eur, lo, hi, opts.categoryIncomes)
+        const x = xPixelForIncome(chart, m.eur, lo, hi, opts.categoryIncomes, opts.xFromIncomeEur)
         if (x == null || !Number.isFinite(x)) continue
         if (x < chartArea.left - 1 || x > chartArea.right + 1) continue
         xs.push(x)
@@ -98,7 +114,7 @@ export function createIncomePercentileRugsPlugin(opts: IncomePercentileRugOption
       const labelPts = opts.markers.filter((m) => [10, 50, 90, 95, 99].includes(m.p))
       let lastX = -1e9
       for (const m of labelPts) {
-        const x = xPixelForIncome(chart, m.eur, lo, hi, opts.categoryIncomes)
+        const x = xPixelForIncome(chart, m.eur, lo, hi, opts.categoryIncomes, opts.xFromIncomeEur)
         if (x == null || x < chartArea.left + 2 || x > chartArea.right - 2) continue
         if (x - lastX < 22) continue
         lastX = x

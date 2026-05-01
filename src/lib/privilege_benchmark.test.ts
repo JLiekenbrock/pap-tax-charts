@@ -63,6 +63,13 @@ describe('Destatis income ladder', () => {
   it('maps P10 cutoff to ~10th percentile', () => {
     expect(individualIncomePercentileDeStatis(32_526)).toBeCloseTo(10, 5)
   })
+
+  it('round-trips interpolated mid-decile percentile via gross↔pct splines', () => {
+    const p = 73.7
+    const eur = grossAtDeStatisPercentile(p)
+    const back = individualIncomePercentileDeStatis(eur)
+    expect(back).toBeCloseTo(p, 0)
+  })
 })
 
 describe('Destatis chart rug markers', () => {
