@@ -216,23 +216,48 @@ select:focus {
   align-items: start;
 }
 
-.tax-tips {
+.tax-tips-panel {
   grid-area: tips;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 18px 20px;
+  padding: 12px 14px;
 }
 
-.tax-tips h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
+.tax-tips-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  color: #111827;
+  list-style: none;
+}
+
+.tax-tips-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tax-tips-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.12s ease;
+}
+
+.tax-tips-panel[open] .tax-tips-summary::before {
+  transform: rotate(90deg);
+}
+
+.tax-tips-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
 }
 
 .tax-tips-blurb {
   margin: 0 0 14px;
   color: #6b7280;
   font-size: 13px;
+  line-height: 1.45;
 }
 
 .tax-tips-list {
@@ -591,6 +616,92 @@ dd {
   opacity: 0.75;
   cursor: not-allowed;
   background: #f3f4f6;
+}
+
+.glossary-panel {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1e293b;
+}
+
+.glossary-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: #0f172a;
+  list-style: none;
+}
+
+.glossary-summary::-webkit-details-marker {
+  display: none;
+}
+
+.glossary-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.12s ease;
+}
+
+.glossary-panel[open] .glossary-summary::before {
+  transform: rotate(90deg);
+}
+
+.glossary-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.glossary-table-wrap {
+  overflow-x: auto;
+  margin: 2px 0 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.glossary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.glossary-table th,
+.glossary-table td {
+  padding: 11px 14px;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.glossary-table tbody tr:last-child th,
+.glossary-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.glossary-table th {
+  width: 30%;
+  min-width: 7.5rem;
+  max-width: 14rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: #f1f5f9;
+  border-right: 1px solid #e2e8f0;
+}
+
+.glossary-table td code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f1f5f9;
 }
 
 .privilege-panel {

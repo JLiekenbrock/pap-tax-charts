@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 5173",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:bmf": "cross-env BMF_TEST=1 vitest run src/lib/validate_bmf.test.ts"
   },
   "dependencies": {

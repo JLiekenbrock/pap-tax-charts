@@ -5,6 +5,7 @@ import ChartControls from './components/ChartControls'
 import Results from './components/Results'
 import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
+import Glossary from './components/Glossary'
 import { PapCalculationResult, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4 } from './lib/pap'
 import { deriveStkl } from './lib/stkl'
 
@@ -170,6 +171,7 @@ export default function App() {
             partner1Income={normalizedSettings.income1}
             partner2Income={normalizedSettings.income2}
           />
+          <Glossary />
         </div>
       </section>
     </main>
