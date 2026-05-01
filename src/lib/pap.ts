@@ -329,7 +329,24 @@ function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   let vsphb = 0
   let vspn = vsp
 
-  if (o.alv !== 1 && o.stkl !== 6) {
+  // PAP 2025 UPEVP: compare ceil(VSP3+VSP1) with ceil(VSP1+min(12%·ZRE4RV, VHB));
+  // VHB is EUR 3,000 only in Steuerklasse III, else EUR 1,900 (Lohnsteuer2025.xml).
+  // PAP 2026 replaces this with MVSPHB (ALV+KV cap EUR 1,900 for all STKL).
+  const pap2025GkVPath = o.year === 2025 && o.pkv === 0
+
+  if (pap2025GkVPath) {
+    const zFor12 = o.krv === 1 ? zre4vp : zre4vprRv
+    const vsp1 = vspRenten
+    const vsp2 = Math.min(Math.floor(zFor12 * 0.12 * 100) / 100, o.stkl === 3 ? 3000 : 1900)
+    const vspNTwelfth = Math.ceil((vsp1 + vsp2) * 100) / 100
+    const vspDetail = Math.ceil((vspKrankenPflege + vsp1) * 100) / 100
+    vsp = vspNTwelfth > vspDetail ? Math.floor(vspNTwelfth * 100) / 100 : vspDetail
+    vspn = vspNTwelfth
+    vsphb = vsp2
+    if (o.alv !== 1 && o.stkl !== 6) {
+      vspArbeitslosen = Math.floor(zre4vprRv * AVSATZAN_2026 * 100) / 100
+    }
+  } else if (o.alv !== 1 && o.stkl !== 6) {
     vspArbeitslosen = Math.floor(zre4vprRv * AVSATZAN_2026 * 100) / 100
     vsphb = Math.min(Math.floor((vspArbeitslosen + vspKrankenPflege) * 100) / 100, 1900)
     vspn = Math.ceil(vspRenten + vsphb)

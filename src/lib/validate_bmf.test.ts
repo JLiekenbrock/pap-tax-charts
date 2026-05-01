@@ -32,6 +32,10 @@ declare const process: any
 //   BMF_TEST=1        — explicit opt-in (no-op when default is on; kept for clarity)
 //
 // PowerShell:  $env:BMF_SKIP='1'; npm test
+//
+// Remote BMF: use `/interface/2025Version1.xhtml` resp. `2026Version1.xhtml` with
+// `code=LSt2026ext` — the path selects PAP 2025 vs 2026. Local LoService matches
+// the bundled jar year only (defaults to 2026 in this suite).
 const env = typeof process !== 'undefined' && process.env ? process.env : {}
 const skipExplicit = env.BMF_SKIP === '1'
 const useLocal = env.LOHSERVICE === '1'
@@ -42,6 +46,16 @@ const useRemote = !skipExplicit && !useLocal && !useHttp
 const harnessEnabled = useRemote || useLocal || useHttp
 
 const maybeDescribe = harnessEnabled ? describe : describe.skip
+
+/** PAP years exercised against the active harness. Remote BMF exposes 2025 + 2026; local LoService jar is 2026-only. */
+const papYearsForHarness: readonly number[] = useRemote ? [2025, 2026] : [2026]
+
+/** BMF `/interface/{X}Version1.xhtml` segment: selects which PAP the server uses (same `code=LSt2026ext` for both). */
+function bmfInterfaceVersion(papYear: number): string {
+  if (papYear === 2025) return '2025Version1'
+  if (papYear === 2026) return '2026Version1'
+  throw new Error(`No BMF interface mapping for PAP year ${papYear}`)
+}
 
 // Matrix of incomes (euros) and tax classes to probe. RE4 is encoded as cents
 // for the BMF interface. Keep the matrix small to stay within polite
@@ -101,52 +115,54 @@ async function safeFetch(url: string, timeoutMs = 5000): Promise<string | null> 
   }
 }
 
-maybeDescribe('PAP parity vs. BMF reference (matrix of RE4 x STKL, year 2026)', () => {
-  it('matches BMF VFRB / WVFRB / annual tax to within 1 EUR for every (income, stkl) pair', async (ctx) => {
-    const rows: ParityRow[] = []
+for (const papYear of papYearsForHarness) {
+  maybeDescribe(`PAP parity vs. BMF reference (matrix of RE4 x STKL, year ${papYear})`, () => {
+    it('matches BMF VFRB / WVFRB / annual tax to within 1 EUR for every (income, stkl) pair', async (ctx) => {
+      const rows: ParityRow[] = []
 
-    for (const income of incomes) {
-      for (const stkl of stklList) {
-        const re4 = income * 100
-        const zkf = 0
+      for (const income of incomes) {
+        for (const stkl of stklList) {
+          const re4 = income * 100
+          const zkf = 0
 
-        // Choose a single source per row, with priority remote > http > local.
-        // Whichever of those three is enabled provides the reference values
-        // we compare against. We deliberately do *not* mix sources to keep
-        // assertion semantics unambiguous when several harnesses are on.
-        let source: ParityRow['source'] | null = null
-        let referenceText: string | null = null
+          // Choose a single source per row, with priority remote > http > local.
+          // Whichever of those three is enabled provides the reference values
+          // we compare against. We deliberately do *not* mix sources to keep
+          // assertion semantics unambiguous when several harnesses are on.
+          let source: ParityRow['source'] | null = null
+          let referenceText: string | null = null
 
-        if (useRemote) {
-          source = 'bmf-remote'
-          const url = `https://www.bmf-steuerrechner.de/interface/2026Version1.xhtml?code=LSt2026ext&LZZ=1&RE4=${re4}&STKL=${stkl}&ZKF=${zkf}`
-          referenceText = await safeFetch(url)
-          if (referenceText === null) {
-            // Network down / BMF unreachable — degrade gracefully instead of
-            // failing the whole test suite on offline machines.
-            console.warn('[BMF parity] skipping: bmf-steuerrechner.de unreachable. Set BMF_SKIP=1 to silence this warning.')
-            ctx.skip()
-            return
+          if (useRemote) {
+            source = 'bmf-remote'
+            const iface = bmfInterfaceVersion(papYear)
+            const url = `https://www.bmf-steuerrechner.de/interface/${iface}.xhtml?code=LSt2026ext&LZZ=1&RE4=${re4}&STKL=${stkl}&ZKF=${zkf}`
+            referenceText = await safeFetch(url)
+            if (referenceText === null) {
+              // Network down / BMF unreachable — degrade gracefully instead of
+              // failing the whole test suite on offline machines.
+              console.warn('[BMF parity] skipping: bmf-steuerrechner.de unreachable. Set BMF_SKIP=1 to silence this warning.')
+              ctx.skip()
+              return
+            }
+          } else if (useHttp) {
+            source = 'lohnservice-http'
+            const port = env.LOHSERVICE_HTTP_PORT || '8081'
+            referenceText = await safeFetch(`http://localhost:${port}/calc?re4=${re4}&stkl=${stkl}&zkf=${zkf}`)
+            if (referenceText === null) {
+              console.warn(`[BMF parity] skipping: local LoService HTTP server on port ${port} unreachable.`)
+              ctx.skip()
+              return
+            }
+          } else if (useLocal && spawnSync) {
+            source = 'lohnservice-local'
+            const toolsDir = path.resolve(process.cwd(), 'tools', 'lohnservice')
+            const cp = `${jarPath}${classpathSep}${toolsDir}`
+            const args = ['-cp', cp, 'LoService', String(re4), String(stkl), String(zkf)]
+            const ev = spawnSync(JAVA_CMD, args, { encoding: 'utf8', windowsHide: true, timeout: 15000 })
+            if (ev.error) throw new Error(`LoService spawn error: ${ev.error}`)
+            if (ev.status !== 0) throw new Error(`LoService exited ${ev.status}: ${ev.stderr}`)
+            referenceText = ev.stdout
           }
-        } else if (useHttp) {
-          source = 'lohnservice-http'
-          const port = env.LOHSERVICE_HTTP_PORT || '8081'
-          referenceText = await safeFetch(`http://localhost:${port}/calc?re4=${re4}&stkl=${stkl}&zkf=${zkf}`)
-          if (referenceText === null) {
-            console.warn(`[BMF parity] skipping: local LoService HTTP server on port ${port} unreachable.`)
-            ctx.skip()
-            return
-          }
-        } else if (useLocal && spawnSync) {
-          source = 'lohnservice-local'
-          const toolsDir = path.resolve(process.cwd(), 'tools', 'lohnservice')
-          const cp = `${jarPath}${classpathSep}${toolsDir}`
-          const args = ['-cp', cp, 'LoService', String(re4), String(stkl), String(zkf)]
-          const ev = spawnSync(JAVA_CMD, args, { encoding: 'utf8', windowsHide: true, timeout: 15000 })
-          if (ev.error) throw new Error(`LoService spawn error: ${ev.error}`)
-          if (ev.status !== 0) throw new Error(`LoService exited ${ev.status}: ${ev.stderr}`)
-          referenceText = ev.stdout
-        }
 
         if (!source || !referenceText) {
           throw new Error('No parity source produced output (this should not happen with harnessEnabled)')
@@ -156,10 +172,8 @@ maybeDescribe('PAP parity vs. BMF reference (matrix of RE4 x STKL, year 2026)', 
         const bmfWvfrb = parseField(referenceText, 'WVFRB')
         const bmfTax = parseField(referenceText, 'LSTJAHR', 'LSTLZZ')
 
-        // Match the BMF reference settings: solidarity off and church off,
-        // no investment income (BMF doesn't compute capital-gains tax).
         const our = calculatePapResultFromRE4(income, {
-          year: 2026,
+          year: papYear,
           filing: 'single',
           children: 0,
           stkl,
@@ -180,41 +194,42 @@ maybeDescribe('PAP parity vs. BMF reference (matrix of RE4 x STKL, year 2026)', 
         // Tight per-field assertions. ±1 EUR tolerates harmless cent-level
         // rounding differences between BMF integer-cent path and ours.
         if (bmfVfrb !== null) {
-          expect(our.vfrb, `VFRB mismatch at income=${income}, stkl=${stkl}`).toBe(bmfVfrb)
+          expect(our.vfrb, `VFRB mismatch at year=${papYear}, income=${income}, stkl=${stkl}`).toBe(bmfVfrb)
         }
         if (bmfWvfrb !== null) {
-          expect(our.wvfrb, `WVFRB mismatch at income=${income}, stkl=${stkl}`).toBe(bmfWvfrb)
+          expect(our.wvfrb, `WVFRB mismatch at year=${papYear}, income=${income}, stkl=${stkl}`).toBe(bmfWvfrb)
         }
         if (bmfTax !== null) {
           // BMF returns the *annual income tax* (LSTJAHR). With solidarity=off
           // and church=0 in our settings, our `tax` equals our `baseTax`
           // (no soli, no church, no capital-gains). Use ±1 EUR tolerance.
           const diff = Math.abs(our.tax - bmfTax)
-          expect(diff, `tax mismatch at income=${income}, stkl=${stkl}: ours=${our.tax}, bmf=${bmfTax}, diff=${diff}`).toBeLessThanOrEqual(1)
+          expect(diff, `tax mismatch at year=${papYear}, income=${income}, stkl=${stkl}: ours=${our.tax}, bmf=${bmfTax}, diff=${diff}`).toBeLessThanOrEqual(1)
+        }
         }
       }
-    }
 
-    // Side-effects (table dump + CSV) are only useful as audit artifacts
-    // when the harness was actually run, hence guarded by `harnessEnabled`.
-    if (harnessEnabled) {
-      console.table(rows)
-      try {
-        if (fs && path && process) {
-          const csvPath = path.resolve(process.cwd(), 'tools', 'lohnservice', 'bmf_comparison.csv')
-          const headers = ['income', 'stkl', 'source', 'bmfVfrb', 'bmfWvfrb', 'bmfTax', 'ourVfrb', 'ourWvfrb', 'ourBaseTax', 'ourTax']
-          const lines = [headers.join(',')]
-          for (const r of rows) {
-            lines.push(headers.map((h) => {
-              const v = (r as any)[h]
-              return v === null || typeof v === 'undefined' ? '' : String(v)
-            }).join(','))
+      // Side-effects (table dump + CSV) are only useful as audit artifacts
+      // when the harness was actually run, hence guarded by `harnessEnabled`.
+      if (harnessEnabled) {
+        console.table(rows)
+        try {
+          if (fs && path && process) {
+            const csvPath = path.resolve(process.cwd(), 'tools', 'lohnservice', `bmf_comparison_${papYear}.csv`)
+            const headers = ['income', 'stkl', 'source', 'bmfVfrb', 'bmfWvfrb', 'bmfTax', 'ourVfrb', 'ourWvfrb', 'ourBaseTax', 'ourTax']
+            const lines = [headers.join(',')]
+            for (const r of rows) {
+              lines.push(headers.map((h) => {
+                const v = (r as any)[h]
+                return v === null || typeof v === 'undefined' ? '' : String(v)
+              }).join(','))
+            }
+            fs.writeFileSync(csvPath, lines.join('\n'), { encoding: 'utf8' })
           }
-          fs.writeFileSync(csvPath, lines.join('\n'), { encoding: 'utf8' })
+        } catch (e) {
+          console.error('Failed to write parity CSV', e)
         }
-      } catch (e) {
-        console.error('Failed to write parity CSV', e)
       }
-    }
-  }, 60000)
-})
+    }, 60000)
+  })
+}
