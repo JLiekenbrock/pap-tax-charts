@@ -90,38 +90,32 @@ export type PapCalculationResult = {
 
 // Core implementation: port of UPTAB25() (tariff 2025) from the PAP implementation
 // This function implements the tariff pieces and rounding strategy used in the Java source.
-function uptab25(zve: number): number {
-  // KZTAB=1 for Grundtarif (no splitting). The PAP code floors X = ZVE / KZTAB
+function uptab25(zve: number, kztab = 1): number {
+  // KZTAB=1 for Grundtarif, 2 for splitting. The PAP code floors X = ZVE / KZTAB.
   const GFB = 12096 // Grundfreibetrag for 2025 (from MPARA)
 
-  // X is integer euros after dividing by KZTAB (1 for single)
-  const X = Math.floor(zve)
+  const X = Math.floor(zve / kztab)
+  let st = 0
 
   // If below or equal GFB -> zero
-  if (X < GFB + 1) return 0
-
-  // Piecewise tariff (numbers taken from Lohnsteuer2025.UPTAB25)
-  if (X < 17444) {
+  if (X < GFB + 1) {
+    st = 0
+  } else if (X < 17444) {
     const Y = (X - GFB) / 10000
     const RW = Y * 932.30 + 1400
-    const ST = Math.floor(RW * Y)
-    return ST
-  }
-
-  if (X < 68481) {
+    st = Math.floor(RW * Y)
+  } else if (X < 68481) {
     // note: subtract 17443 as in the Java implementation
     const Y = (X - 17443) / 10000
     const RW = Y * 176.64 + 2397
-    const ST = Math.floor(RW * Y + 1015.13)
-    return ST
+    st = Math.floor(RW * Y + 1015.13)
+  } else if (X < 277826) {
+    st = Math.floor(X * 0.42 - 10911.92)
+  } else {
+    st = Math.floor(X * 0.45 - 19246.67)
   }
 
-  if (X < 277826) {
-    const ST = Math.floor(X * 0.42 - 10911.92)
-    return ST
-  }
-
-  return Math.floor(X * 0.45 - 19246.67)
+  return st * kztab
 }
 
 // Core implementation: port of UPTAB26() (tariff 2026) from the PAP implementation.
@@ -164,7 +158,8 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
 
   // Single filer: compute tariff using UPTAB25 when year is 2025 (default)
   if (o.year === 2025 || o.year === 2026) {
-    const base = o.year === 2026 ? uptab26(taxable) : uptab25(taxable)
+    const kztab = o.filing === 'married' || o.stkl === 3 ? 2 : 1
+    const base = o.year === 2026 ? uptab26(taxable, kztab) : uptab25(taxable, kztab)
     // Solidaritätszuschlag: approximate using the simple rule implemented earlier
     let solz = 0
     if (o.solidarity) {
@@ -271,9 +266,9 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
   const vsp = vspDetails.vsp
   const zve = Math.max(0, Math.floor(re4 - ztabfb - vsp))
 
-  const kztab = o.stkl === 3 ? 2 : 1
+  const kztab = o.filing === 'married' || o.stkl === 3 ? 2 : 1
   const gfb = o.year === 2026 ? GFB_2026 : GFB_2025
-  const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve)
+  const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve, kztab)
 
   // Solidaritätszuschlag (approx)
   let solz = 0

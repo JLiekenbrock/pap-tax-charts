@@ -86,10 +86,10 @@ const STACKED_PARTS: Array<{
   { key: 'vsp', label: 'VSP', color: '#7C3AED', value: (point) => point.vsp },
   { key: 'ztabfb', label: 'Allowances', color: '#EA580C', value: (point) => point.ztabfb },
   {
-    key: 'remaining',
-    label: 'Remaining wage',
+    key: 'netSalary',
+    label: 'Net salary',
     color: '#64748B',
-    value: (point) => Math.max(0, point.income - point.tax - point.vsp - point.ztabfb),
+    value: (point) => Math.max(0, point.income - point.tax - point.vsp),
   },
 ]
 

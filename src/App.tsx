@@ -22,6 +22,10 @@ function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
 
 const DEFAULT_SETTINGS: PapExplorerSettings = {
   income: 60000,
+  income1: 60000,
+  income2: 0,
+  includeKindergeld: false,
+  kindergeldChildren: 0,
   rangeMin: 0,
   rangeMax: 120000,
   points: 180,
@@ -50,11 +54,20 @@ export default function App() {
   const normalizedSettings = React.useMemo(() => {
     const rangeMin = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
     const rangeMax = Math.max(rangeMin + 1000, settings.rangeMax)
+    const income1 = clamp(settings.income1, 0, rangeMax)
+    const income2 = clamp(settings.income2, 0, rangeMax)
+    const income = settings.filing === 'married'
+      ? clamp(income1 + income2, rangeMin, rangeMax)
+      : clamp(settings.income, rangeMin, rangeMax)
+    const kindergeldChildren = Math.max(0, Math.floor(settings.kindergeldChildren))
     return {
       ...settings,
       rangeMin,
       rangeMax,
-      income: clamp(settings.income, rangeMin, rangeMax),
+      income,
+      income1,
+      income2,
+      kindergeldChildren,
       points: clamp(settings.points, 2, 1000),
     }
   }, [settings])
@@ -86,7 +99,7 @@ export default function App() {
         />
         <div className="visual-pane">
           <TaxChart series={series} currentIncome={normalizedSettings.income} metrics={metrics} mode={chartMode} />
-          <Results result={current} />
+          <Results result={current} settings={normalizedSettings} />
         </div>
       </section>
     </main>

@@ -4,6 +4,10 @@ import { PapOptions } from '../lib/pap'
 
 export type PapExplorerSettings = Required<PapOptions> & {
   income: number
+  income1: number
+  income2: number
+  includeKindergeld: boolean
+  kindergeldChildren: number
   rangeMin: number
   rangeMax: number
   points: number
@@ -28,6 +32,34 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
     onChange({ ...settings, [key]: value })
   }
 
+  const updateIncomePart = (key: 'income1' | 'income2', value: number) => {
+    const next = { ...settings, [key]: value }
+    onChange({ ...next, income: next.income1 + next.income2 })
+  }
+
+  const updateFiling = (filing: PapExplorerSettings['filing']) => {
+    if (filing === 'married') {
+      onChange({
+        ...settings,
+        filing,
+        income1: settings.income1 || settings.income,
+        income2: settings.income2 || 0,
+      })
+    } else {
+      onChange({ ...settings, filing, income: settings.income1 + settings.income2 })
+    }
+  }
+
+  const updateKindergeld = (enabled: boolean) => {
+    onChange({
+      ...settings,
+      includeKindergeld: enabled,
+      kindergeldChildren: enabled && settings.kindergeldChildren === 0
+        ? Math.max(1, Math.round(settings.children))
+        : settings.kindergeldChildren,
+    })
+  }
+
   const toggleMetric = (metric: ChartMetric) => {
     if (metrics.includes(metric)) {
       const next = metrics.filter((item) => item !== metric)
@@ -42,7 +74,7 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
       <div className="control-section">
         <h2>Range</h2>
         <label>
-          Income
+          {settings.filing === 'married' ? 'Combined income' : 'Income'}
           <input type="number" value={settings.income} min={0} step={1000} onChange={(e) => update('income', numberValue(e.target.value))} />
         </label>
         <input
@@ -56,6 +88,40 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
           onInput={(e) => update('income', numberValue(e.currentTarget.value))}
           onChange={(e) => update('income', numberValue(e.target.value))}
         />
+        {settings.filing === 'married' && (
+          <div className="income-split">
+            <label>
+              Income 1
+              <input type="number" value={settings.income1} min={0} step={1000} onChange={(e) => updateIncomePart('income1', numberValue(e.target.value))} />
+            </label>
+            <input
+              className="income-slider"
+              type="range"
+              aria-label="Income 1 slider"
+              value={settings.income1}
+              min={0}
+              max={settings.rangeMax}
+              step={100}
+              onInput={(e) => updateIncomePart('income1', numberValue(e.currentTarget.value))}
+              onChange={(e) => updateIncomePart('income1', numberValue(e.target.value))}
+            />
+            <label>
+              Income 2
+              <input type="number" value={settings.income2} min={0} step={1000} onChange={(e) => updateIncomePart('income2', numberValue(e.target.value))} />
+            </label>
+            <input
+              className="income-slider"
+              type="range"
+              aria-label="Income 2 slider"
+              value={settings.income2}
+              min={0}
+              max={settings.rangeMax}
+              step={100}
+              onInput={(e) => updateIncomePart('income2', numberValue(e.currentTarget.value))}
+              onChange={(e) => updateIncomePart('income2', numberValue(e.target.value))}
+            />
+          </div>
+        )}
         <div className="two-col">
           <label>
             Min
@@ -84,15 +150,25 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
         </label>
         <label>
           Filing
-          <select value={settings.filing} onChange={(e) => update('filing', e.target.value as PapExplorerSettings['filing'])}>
+          <select value={settings.filing} onChange={(e) => updateFiling(e.target.value as PapExplorerSettings['filing'])}>
             <option value="single">Single</option>
             <option value="married">Married</option>
           </select>
         </label>
         <label>
-          Children / ZKF
+          Child allowance factor / ZKF
           <input type="number" value={settings.children} min={0} step={0.5} onChange={(e) => update('children', numberValue(e.target.value))} />
         </label>
+        <label className="checkbox-row">
+          <input type="checkbox" checked={settings.includeKindergeld} onChange={(e) => updateKindergeld(e.target.checked)} />
+          Include Kindergeld
+        </label>
+        {settings.includeKindergeld && (
+          <label>
+            Kindergeld children
+            <input type="number" value={settings.kindergeldChildren} min={0} step={1} onChange={(e) => update('kindergeldChildren', Math.max(0, Math.floor(numberValue(e.target.value))))} />
+          </label>
+        )}
         <label className="checkbox-row">
           <input type="checkbox" checked={settings.solidarity} onChange={(e) => update('solidarity', e.target.checked)} />
           Solidarity surcharge

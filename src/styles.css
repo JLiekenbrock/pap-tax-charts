@@ -117,6 +117,12 @@ select:focus {
   margin: 0 0 14px;
 }
 
+.income-split {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
