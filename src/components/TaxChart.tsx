@@ -13,8 +13,24 @@ import {
   Legend,
   Filler,
 } from 'chart.js'
-import { PapCalculationResult, calculatePapResultFromRE4 } from '../lib/pap'
+import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from '../lib/pap'
 import { PapExplorerSettings } from './TaxInput'
+
+function toPapOptions(settings: PapExplorerSettings): PapOptions {
+  const {
+    income: _income,
+    income1: _income1,
+    income2: _income2,
+    rangeMin: _rangeMin,
+    rangeMax: _rangeMax,
+    points: _points,
+    includeKindergeld: _includeKindergeld,
+    kindergeldChildren: _kindergeldChildren,
+    ...rest
+  } = settings
+  void _income; void _income1; void _income2; void _rangeMin; void _rangeMax; void _points; void _includeKindergeld; void _kindergeldChildren
+  return rest
+}
 
 ChartJS.register(
   CategoryScale,
@@ -51,12 +67,16 @@ type MetricConfig = {
   value: (point: PapCalculationResult) => number
 }
 
-function totalIncome(point: PapCalculationResult) {
-  return point.totalIncome
-}
-
-function incomePercent(point: PapCalculationResult, value: number) {
-  return totalIncome(point) > 0 ? (value / totalIncome(point)) * 100 : 0
+// Returns rate as %, or null when the denominator is too small to give a
+// meaningful number. Skipping null points lets the chart draw a gap instead
+// of a giant spike at very low incomes (e.g. (payrollTax + VSP) / ZVE when
+// ZVE has been almost fully eaten by VSP itself).
+function ratePercent(point: PapCalculationResult, value: number, basis: RateBasis): number | null {
+  const denominator = basis === 'zve' ? point.zve : point.income
+  if (denominator < 1000) return null
+  const rate = (value / denominator) * 100
+  if (!Number.isFinite(rate) || rate > 100) return null
+  return rate
 }
 
 export const CHART_METRICS: MetricConfig[] = [
@@ -81,56 +101,8 @@ export const CHART_METRICS: MetricConfig[] = [
   { key: 'vspArbeitslosen', label: 'Unemployment', color: '#D97706', unit: 'eur', value: (point) => point.vspArbeitslosen },
 ]
 
-const PERCENT_METRICS: MetricConfig[] = [
-  { key: 'payrollTax', label: 'Payroll tax %', color: '#047857', unit: 'percent', value: (point) => incomePercent(point, point.payrollTax) },
-  {
-    key: 'investmentTax',
-    label: 'Capital gains tax %',
-    color: '#B45309',
-    unit: 'percent',
-    value: (point) => incomePercent(point, point.investmentTax + point.investmentSolz + point.investmentChurch),
-  },
-  { key: 'vsp', label: 'VSP %', color: '#7C3AED', unit: 'percent', value: (point) => incomePercent(point, point.vsp) },
-  {
-    key: 'zve',
-    label: 'Remaining %',
-    color: '#64748B',
-    unit: 'percent',
-    value: (point) => Math.max(
-      0,
-      100
-        - incomePercent(point, point.payrollTax)
-        - incomePercent(point, point.investmentTax + point.investmentSolz + point.investmentChurch)
-        - incomePercent(point, point.vsp),
-    ),
-  },
-]
-
 export type ChartMode = 'lines' | 'stacked' | 'percent' | 'rates'
 export type RateBasis = 'gross' | 'zve'
-
-const STACKED_PARTS: Array<{
-  key: string
-  label: string
-  color: string
-  value: (point: PapCalculationResult) => number
-}> = [
-  { key: 'payrollTax', label: 'Payroll tax', color: '#047857', value: (point) => point.payrollTax },
-  {
-    key: 'capitalGainsTax',
-    label: 'Capital gains tax',
-    color: '#B45309',
-    value: (point) => point.investmentTax + point.investmentSolz + point.investmentChurch,
-  },
-  { key: 'vsp', label: 'VSP', color: '#7C3AED', value: (point) => point.vsp },
-  { key: 'ztabfb', label: 'Allowances', color: '#EA580C', value: (point) => point.ztabfb },
-  {
-    key: 'netSalary',
-    label: 'Net income',
-    color: '#64748B',
-    value: (point) => Math.max(0, point.totalIncome - point.tax - point.vsp),
-  },
-]
 
 function metricConfig(metric: ChartMetric) {
   return CHART_METRICS.find((item) => item.key === metric) ?? CHART_METRICS[0]
@@ -144,14 +116,23 @@ function formatPercent(value: number) {
   return `${Number(value).toFixed(2)}%`
 }
 
-function marginalTaxRate(point: PapCalculationResult, settings: PapExplorerSettings, basis: RateBasis) {
-  const delta = 100
+function marginalTaxRate(
+  point: PapCalculationResult,
+  settings: PapExplorerSettings,
+  basis: RateBasis,
+  includeVspInRate: boolean,
+) {
+  const delta = 500
   const lowerIncome = Math.max(0, point.income - delta)
   const upperIncome = point.income + delta
-  const lower = calculatePapResultFromRE4(lowerIncome, { ...settings, income: lowerIncome })
-  const upper = calculatePapResultFromRE4(upperIncome, { ...settings, income: upperIncome })
+  const opts = toPapOptions(settings)
+  const lower = calculatePapResultFromRE4(lowerIncome, opts)
+  const upper = calculatePapResultFromRE4(upperIncome, opts)
   const basisDelta = basis === 'zve' ? upper.zve - lower.zve : upperIncome - lowerIncome
-  return basisDelta > 0 ? ((upper.tax - lower.tax) / basisDelta) * 100 : 0
+  // Marginal is on payroll tax only (capital gains tax is a constant in x and would cancel anyway).
+  const upperAmount = includeVspInRate ? upper.payrollTax + upper.vsp : upper.payrollTax
+  const lowerAmount = includeVspInRate ? lower.payrollTax + lower.vsp : lower.payrollTax
+  return basisDelta > 0 ? ((upperAmount - lowerAmount) / basisDelta) * 100 : 0
 }
 
 const selectedIncomePlugin = {
@@ -200,6 +181,13 @@ const selectedIncomePlugin = {
   },
 }
 
+type StackPart = {
+  key: string
+  label: string
+  color: string
+  value: (point: PapCalculationResult) => number
+}
+
 export default function TaxChart({
   series,
   currentIncome,
@@ -207,6 +195,8 @@ export default function TaxChart({
   mode,
   settings,
   rateBasis,
+  vspInRates,
+  vspInComposition,
 }: {
   series: PapCalculationResult[]
   currentIncome: number
@@ -214,7 +204,50 @@ export default function TaxChart({
   mode: ChartMode
   settings: PapExplorerSettings
   rateBasis: RateBasis
+  vspInRates: boolean
+  vspInComposition: boolean
 }) {
+  const lineMetrics = React.useMemo(() => {
+    const selected = metrics.map((metric) => metricConfig(metric))
+    return selected.length ? selected : [metricConfig('tax')]
+  }, [metrics])
+
+  const cashStackParts = React.useMemo<StackPart[]>(() => {
+    const parts: StackPart[] = [
+      { key: 'payrollTax', label: 'Payroll tax', color: '#047857', value: (point) => Math.max(0, point.payrollTax) },
+      {
+        key: 'capitalGainsTax',
+        label: 'Capital gains tax',
+        color: '#B45309',
+        value: (point) => Math.max(0, point.investmentTax + point.investmentSolz + point.investmentChurch),
+      },
+    ]
+    if (vspInComposition) {
+      parts.push({
+        key: 'vsp',
+        label: 'VSP',
+        color: '#7C3AED',
+        value: (point) => Math.max(0, point.vsp),
+      })
+    }
+    parts.push({
+      key: 'usableSalary',
+      label: 'Usable salary',
+      color: '#64748B',
+      value: (point) => Math.max(0, point.income - point.payrollTax - (vspInComposition ? point.vsp : 0)),
+    })
+    parts.push({
+      key: 'usableInvestment',
+      label: 'Usable investment income',
+      color: '#0EA5E9',
+      value: (point) => {
+        const investmentTaxTotal = point.investmentTax + point.investmentSolz + point.investmentChurch
+        return Math.max(0, point.investmentIncome - investmentTaxTotal)
+      },
+    })
+    return parts
+  }, [vspInComposition])
+
   let selectedIndex = 0
   for (let i = 0; i < series.length; i++) {
     if (Math.abs(series[i].income - currentIncome) < Math.abs(series[selectedIndex]?.income - currentIncome)) selectedIndex = i
@@ -224,78 +257,121 @@ export default function TaxChart({
     const minIncome = series[0].income
     const maxIncome = series[series.length - 1].income
     const interval = 1000
+    const opts = toPapOptions(settings)
     const points: PapCalculationResult[] = []
     for (let income = minIncome; income <= maxIncome; income += interval) {
-      points.push(calculatePapResultFromRE4(income, { ...settings, income }))
+      points.push(calculatePapResultFromRE4(income, opts))
     }
     if (points[points.length - 1]?.income !== maxIncome) {
-      points.push(calculatePapResultFromRE4(maxIncome, { ...settings, income: maxIncome }))
+      points.push(calculatePapResultFromRE4(maxIncome, opts))
     }
     return points
   }, [mode, series, settings])
 
+  const marginalRates = React.useMemo(() => {
+    if (mode !== 'rates') return [] as (number | null)[]
+    // Use null for points with too small a denominator so the chart skips them
+    // instead of showing huge spikes (same logic as ratePercent).
+    const raw = ratesSeries.map((point) => {
+      const denom = rateBasis === 'zve' ? point.zve : point.income
+      if (denom < 1000) return null
+      return marginalTaxRate(point, settings, rateBasis, vspInRates)
+    })
+    // Centered moving average (window=5) to smooth out single-point spikes caused
+    // by PAP bracket transitions and VSP BBG (Beitragsbemessungsgrenze) thresholds.
+    const window = 2
+    return raw.map((value, i) => {
+      if (value === null) return null
+      let sum = 0
+      let count = 0
+      for (let j = Math.max(0, i - window); j <= Math.min(raw.length - 1, i + window); j++) {
+        const v = raw[j]
+        if (v === null) continue
+        sum += v
+        count++
+      }
+      return count > 0 ? sum / count : null
+    })
+  }, [mode, ratesSeries, settings, rateBasis, vspInRates])
+
   const data = {
     labels: mode === 'stacked' || mode === 'percent' ? series.map((point) => point.income) : undefined,
     datasets: mode === 'percent'
-      ? PERCENT_METRICS.map((config, partIndex): ChartDataset<'bar'> => ({
-          label: config.label,
+      ? cashStackParts.map((part): ChartDataset<'bar'> => ({
+          label: part.label,
           data: series.map((point) => {
-            const previous = PERCENT_METRICS.slice(0, partIndex).reduce((total, item) => total + item.value(point), 0)
-            const next = previous + config.value(point)
-            return { x: point.income, y: [previous, next] }
+            const total = cashStackParts.reduce((sum, item) => sum + item.value(point), 0)
+            return total > 0 ? (part.value(point) / total) * 100 : 0
           }),
-          borderColor: config.color,
-          backgroundColor: `${config.color}80`,
-          borderWidth: 1,
+          stack: 'total',
+          borderColor: part.color,
+          backgroundColor: part.color,
+          borderWidth: 0,
+          borderSkipped: false,
           barPercentage: 1,
           categoryPercentage: 1,
           yAxisID: 'yPercent',
         }))
       : mode === 'rates'
-        ? [
-            {
-              label: 'Effective tax rate',
-              data: ratesSeries.map((point) => ({ x: point.income, y: incomePercent(point, point.tax) })),
-              borderColor: '#0F766E',
-              backgroundColor: '#0F766E',
-              borderWidth: 2.5,
-              pointRadius: 0,
-              tension: 0.18,
-              yAxisID: 'yPercent',
-            },
-            {
-              label: rateBasis === 'zve' ? 'Marginal tax rate / ZVE' : 'Marginal tax rate / gross',
-              data: ratesSeries.map((point) => ({ x: point.income, y: marginalTaxRate(point, settings, rateBasis) })),
-              borderColor: '#DC2626',
-              backgroundColor: '#DC2626',
-              borderWidth: 2.5,
-              pointRadius: 0,
-              tension: 0.12,
-              yAxisID: 'yPercent',
-            },
-          ] satisfies ChartDataset<'line'>[]
+        ? (() => {
+            const basisLabel = rateBasis === 'zve' ? 'ZVE' : 'salary'
+            // When VSP is in the numerator we're plotting the combined burden,
+            // not just tax. Make that explicit so a non-zero value below the
+            // Grundfreibetrag does not look like a tax-rate spike.
+            const effectiveLabel = vspInRates
+              ? `Effective burden tax + VSP (% of ${basisLabel})`
+              : `Effective tax rate (% of ${basisLabel})`
+            const marginalLabel = vspInRates
+              ? `Marginal burden tax + VSP (% of ${basisLabel})`
+              : `Marginal tax rate (% of ${basisLabel})`
+            return [
+              {
+                label: effectiveLabel,
+                data: ratesSeries.map((point) => ({
+                  x: point.income,
+                  y: ratePercent(point, vspInRates ? point.payrollTax + point.vsp : point.payrollTax, rateBasis),
+                })) as any,
+                borderColor: '#0F766E',
+                backgroundColor: '#0F766E',
+                borderWidth: 2.5,
+                pointRadius: 0,
+                tension: 0.25,
+                spanGaps: false,
+                yAxisID: 'yPercent',
+              },
+              {
+                label: marginalLabel,
+                data: ratesSeries.map((point, index) => ({ x: point.income, y: marginalRates[index] })) as any,
+                borderColor: '#DC2626',
+                backgroundColor: '#DC2626',
+                borderWidth: 2.5,
+                pointRadius: 0,
+                tension: 0.25,
+                spanGaps: false,
+                yAxisID: 'yPercent',
+              },
+            ] satisfies ChartDataset<'line'>[]
+          })()
       : mode === 'stacked'
-        ? STACKED_PARTS.map((part, partIndex): ChartDataset<'bar'> => ({
+        ? cashStackParts.map((part): ChartDataset<'bar'> => ({
             label: part.label,
-            data: series.map((point) => {
-              const previous = STACKED_PARTS.slice(0, partIndex).reduce((total, item) => total + item.value(point), 0)
-              const next = previous + part.value(point)
-              return { x: point.income, y: [previous, next] }
-            }),
+            data: series.map((point) => part.value(point)),
+            stack: 'total',
             borderColor: part.color,
-            backgroundColor: `${part.color}80`,
-            borderWidth: 1,
+            backgroundColor: part.color,
+            borderWidth: 0,
+            borderSkipped: false,
             barPercentage: 1,
             categoryPercentage: 1,
+            yAxisID: 'y',
           }))
-        : metrics.map((metric): ChartDataset<'line'> => {
-        const config = metricConfig(metric)
+        : lineMetrics.map((config): ChartDataset<'line'> => {
         return {
           label: config.label,
           data: series.map((point) => ({ x: point.income, y: config.value(point) })),
           borderColor: config.color,
           backgroundColor: config.color,
-          borderWidth: metric === 'tax' ? 3 : 2,
+          borderWidth: config.key === 'tax' ? 3 : 2,
           pointRadius: 0,
           tension: 0.18,
           yAxisID: 'y',
@@ -320,7 +396,7 @@ export default function TaxChart({
         callbacks: {
           label: (context: any) => {
             const raw = context.raw
-            const value = Array.isArray(raw?.y) ? raw.y[1] - raw.y[0] : context.parsed.y
+            const value = typeof raw === 'number' ? raw : context.parsed.y
             return mode === 'percent' || mode === 'rates'
               ? `${context.dataset.label}: ${formatPercent(value)}`
               : `${context.dataset.label}: ${formatEuro(value)}`
@@ -331,9 +407,16 @@ export default function TaxChart({
     scales: {
       x: {
         type: mode === 'stacked' || mode === 'percent' ? 'category' as const : 'linear' as const,
-        title: { display: true, text: 'Gross wage / RE4 (EUR)' },
+        title: { display: true, text: 'Salary income / RE4 (EUR)' },
+        stacked: mode === 'stacked' || mode === 'percent',
+        grid: {
+          display: mode !== 'stacked' && mode !== 'percent',
+          drawBorder: true,
+        },
         ticks: {
           maxTicksLimit: 7,
+          autoSkip: true,
+          autoSkipPadding: 12,
           callback: (value: string | number) => {
             const tickValue = mode === 'stacked' || mode === 'percent'
               ? series[Number(value)]?.income ?? value
@@ -344,17 +427,26 @@ export default function TaxChart({
       },
       y: {
         display: mode !== 'percent' && mode !== 'rates',
-        title: { display: true, text: 'EUR' },
+        title: {
+          display: true,
+          text: mode === 'stacked' ? 'Income composition (EUR)' : 'Selected metric value (EUR)',
+        },
+        stacked: mode === 'stacked',
         ticks: {
-          callback: (value: string | number) => Number(value).toLocaleString(),
+          callback: (value: string | number) => `EUR ${Number(value).toLocaleString()}`,
         },
       },
       yPercent: {
         display: mode === 'percent' || mode === 'rates',
         position: 'right' as const,
-        title: { display: true, text: mode === 'rates' ? 'Tax rate' : '% of wage' },
+        stacked: mode === 'percent',
+        title: {
+          display: true,
+          text: mode === 'rates' ? 'Tax rate (%)' : 'Share of income composition (%)',
+        },
         min: 0,
-        max: mode === 'percent' || mode === 'rates' ? 100 : undefined,
+        max: mode === 'percent' ? 100 : undefined,
+        suggestedMax: mode === 'rates' ? 50 : undefined,
         ticks: {
           callback: (value: string | number) => `${Number(value).toFixed(1)}%`,
         },
@@ -365,8 +457,8 @@ export default function TaxChart({
   return (
     <section className="chart-panel">
       {mode === 'stacked' || mode === 'percent'
-        ? <Bar data={data as any} options={options} plugins={[selectedIncomePlugin]} />
-        : <Line data={data as any} options={options} plugins={[selectedIncomePlugin]} />}
+        ? <Bar key={`bar-${mode}`} data={data as any} options={options} plugins={[selectedIncomePlugin]} />
+        : <Line key={`line-${mode}`} data={data as any} options={options} plugins={[selectedIncomePlugin]} />}
     </section>
   )
 }

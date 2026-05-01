@@ -8,24 +8,54 @@ function eur(value: number) {
 
 const KINDERGELD_MONTHLY_2026 = 259
 
-export default function Results({ result, settings }: { result: PapCalculationResult; settings: PapExplorerSettings }) {
-  const [includeVsp, setIncludeVsp] = React.useState(false)
-  const netIncome = Math.max(0, result.totalIncome - result.tax - result.vsp)
+export default function Results({
+  result,
+  settings,
+  vspInRates,
+  onVspInRatesChange,
+  vspInComposition,
+  onVspInCompositionChange,
+}: {
+  result: PapCalculationResult
+  settings: PapExplorerSettings
+  vspInRates: boolean
+  onVspInRatesChange: (next: boolean) => void
+  vspInComposition: boolean
+  onVspInCompositionChange: (next: boolean) => void
+}) {
+  const incomeAfterTax = Math.max(0, result.totalIncome - result.tax)
+  const takeHomeCash = Math.max(0, result.totalIncome - result.tax - result.vsp)
   const kindergeld = settings.includeKindergeld ? settings.kindergeldChildren * KINDERGELD_MONTHLY_2026 * 12 : 0
-  const netWithKindergeld = netIncome + kindergeld
-  const effectiveBase = includeVsp ? result.tax + result.vsp : result.tax
-  const effective = result.totalIncome > 0 ? (effectiveBase / result.totalIncome) * 100 : 0
+  const investmentTaxTotal = result.investmentTax + result.investmentSolz + result.investmentChurch
+
+  // Pure tax rate (0 below the Grundfreibetrag/Steueruntergrenze).
+  const salaryTaxRate = result.income > 0 ? (result.payrollTax / result.income) * 100 : 0
+  const totalTaxRate = result.totalIncome > 0 ? (result.tax / result.totalIncome) * 100 : 0
+  // Combined burden including VSP (social contributions). Even at 0 tax this
+  // is non-zero because VSP is still owed.
+  const salaryBurdenRate = result.income > 0 ? ((result.payrollTax + result.vsp) / result.income) * 100 : 0
+  const totalBurdenRate = result.totalIncome > 0 ? ((result.tax + result.vsp) / result.totalIncome) * 100 : 0
 
   const rows = [
     ['Tax', eur(result.tax)],
     ['Payroll tax', eur(result.payrollTax)],
-    ['Investment tax', eur(result.investmentTax + result.investmentSolz + result.investmentChurch)],
-    ['Net income', eur(netIncome)],
+    ['Investment tax', eur(investmentTaxTotal)],
+    ['Income after tax', eur(incomeAfterTax)],
+    ['Take-home cash (after tax & VSP)', eur(takeHomeCash)],
     ...(settings.includeKindergeld ? [
       ['Kindergeld', eur(kindergeld)],
-      ['Net incl. Kindergeld', eur(netWithKindergeld)],
+      ['Take-home incl. Kindergeld', eur(takeHomeCash + kindergeld)],
     ] : []),
-    [includeVsp ? 'Tax + VSP share' : 'Effective tax rate', `${effective.toFixed(2)}%`],
+    ['Effective tax on salary', `${salaryTaxRate.toFixed(2)}%`],
+    ...(vspInRates ? [
+      ['Effective burden (tax + VSP) on salary', `${salaryBurdenRate.toFixed(2)}%`],
+    ] : []),
+    ...(result.investmentIncome > 0 ? [
+      ['Effective tax on total income', `${totalTaxRate.toFixed(2)}%`],
+      ...(vspInRates ? [
+        ['Effective burden (tax + VSP) on total income', `${totalBurdenRate.toFixed(2)}%`],
+      ] : []),
+    ] : []),
     ...(settings.filing === 'married' ? [
       ['Income 1', eur(settings.income1)],
       ['Income 2', eur(settings.income2)],
@@ -49,8 +79,20 @@ export default function Results({ result, settings }: { result: PapCalculationRe
         <strong>{eur(result.tax)}</strong>
       </div>
       <label className="checkbox-row result-toggle">
-        <input type="checkbox" checked={includeVsp} onChange={(event) => setIncludeVsp(event.target.checked)} />
-        Include VSP in share
+        <input
+          type="checkbox"
+          checked={vspInRates}
+          onChange={(event) => onVspInRatesChange(event.target.checked)}
+        />
+        Include VSP in tax rates
+      </label>
+      <label className="checkbox-row result-toggle">
+        <input
+          type="checkbox"
+          checked={vspInComposition}
+          onChange={(event) => onVspInCompositionChange(event.target.checked)}
+        />
+        Include VSP in stacked composition
       </label>
       <dl>
         {rows.map(([label, value]) => (

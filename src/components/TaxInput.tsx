@@ -190,6 +190,13 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
       <div className="control-section">
         <h2>Tax inputs</h2>
         <label>
+          Year
+          <select value={settings.year} onChange={(e) => update('year', Number(e.target.value) as PapExplorerSettings['year'])}>
+            <option value={2025}>2025</option>
+            <option value={2026}>2026</option>
+          </select>
+        </label>
+        <label>
           Tax class
           <select value={settings.stkl} onChange={(e) => update('stkl', Number(e.target.value) as PapExplorerSettings['stkl'])}>
             {[1, 2, 3, 4, 5, 6].map((value) => (
@@ -294,17 +301,19 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
         )}
       </div>
 
-      <div className="control-section">
-        <h2>Chart lines</h2>
-        <div className="metric-grid">
-          {CHART_METRICS.map((metric) => (
-            <label key={metric.key} className="checkbox-row metric-option">
-              <input type="checkbox" checked={metrics.includes(metric.key)} disabled={chartMode !== 'lines'} onChange={() => toggleMetric(metric.key)} />
-              {metric.label}
-            </label>
-          ))}
+      {chartMode === 'lines' && (
+        <div className="control-section">
+          <h2>Chart metrics</h2>
+          <div className="metric-grid">
+            {CHART_METRICS.map((metric) => (
+              <label key={metric.key} className="checkbox-row metric-option">
+                <input type="checkbox" checked={metrics.includes(metric.key)} onChange={() => toggleMetric(metric.key)} />
+                {metric.label}
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </aside>
   )
 }

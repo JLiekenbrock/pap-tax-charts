@@ -52,6 +52,8 @@ export default function App() {
   const [metrics, setMetrics] = React.useState<ChartMetric[]>(['tax', 'zve', 'vsp'])
   const [chartMode, setChartMode] = React.useState<ChartMode>('lines')
   const [rateBasis, setRateBasis] = React.useState<RateBasis>('gross')
+  const [vspInRates, setVspInRates] = React.useState(true)
+  const [vspInComposition, setVspInComposition] = React.useState(true)
 
   const normalizedSettings = React.useMemo(() => {
     const income1 = Math.max(0, settings.income1)
@@ -132,8 +134,24 @@ export default function App() {
           onRateBasisChange={setRateBasis}
         />
         <div className="visual-pane">
-          <TaxChart series={series} currentIncome={normalizedSettings.income} metrics={metrics} mode={chartMode} settings={normalizedSettings} rateBasis={rateBasis} />
-          <Results result={current} settings={normalizedSettings} />
+          <TaxChart
+            series={series}
+            currentIncome={normalizedSettings.income}
+            metrics={metrics}
+            mode={chartMode}
+            settings={normalizedSettings}
+            rateBasis={rateBasis}
+            vspInRates={vspInRates}
+            vspInComposition={vspInComposition}
+          />
+          <Results
+            result={current}
+            settings={normalizedSettings}
+            vspInRates={vspInRates}
+            onVspInRatesChange={setVspInRates}
+            vspInComposition={vspInComposition}
+            onVspInCompositionChange={setVspInComposition}
+          />
         </div>
       </section>
     </main>
