@@ -25,6 +25,20 @@ describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
     expect(t).toBeGreaterThan(100000)
     expect(t).toBeLessThan(400000)
   })
+
+  it('splits VSP into Renten- und Arbeitslosenversicherung (chart decomposition)', () => {
+    const r = calculatePapResultFromRE4(80_000, {
+      year: 2025,
+      filing: 'single',
+      children: 0,
+      solidarity: false,
+      churchRate: 0,
+      pkv: 0,
+      kvz: 1.7,
+    })
+    expect(r.vspRenten).toBeGreaterThan(0)
+    expect(r.vspArbeitslosen).toBeGreaterThan(0)
+  })
 })
 
 describe('Solidaritätszuschlag Milderungszone (SolZG §4)', () => {

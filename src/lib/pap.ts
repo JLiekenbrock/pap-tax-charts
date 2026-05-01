@@ -113,6 +113,8 @@ function computeWageSoli(base: number, solidarity: boolean, year: number, kztab:
   return Math.round(Math.min(standard, taper))
 }
 
+const BBGRVALV_2025 = 96600
+const BBGKVPV_2025 = 66150
 const BBGRVALV_2026 = 101400
 const BBGKVPV_2026 = 69750
 const AVSATZAN_2026 = 0.013
@@ -283,7 +285,9 @@ export function computeZTABFB(re4: number, opts?: PapOptions): number {
 
 function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   const o = { ...DEFAULTS, ...(opts || {}) }
-  if (o.year !== 2026) {
+  // Only 2025 and 2026 implement the split RV / KV+PV / AV lines used by charts
+  // (decomposition, Results). Other years keep a coarse placeholder VSP.
+  if (o.year !== 2025 && o.year !== 2026) {
     const vsp = Math.floor(Math.min(Math.floor(re4 * 0.02), 3000))
     return {
       vsp,
@@ -297,9 +301,10 @@ function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   }
 
   const zre4vp = Math.max(0, re4)
-  // Allow scenario overrides (pro mode) to substitute custom BBGs.
-  const bbgRvAlv = opts?.bbgRvAlv ?? BBGRVALV_2026
-  const bbgKvPv = opts?.bbgKvPv ?? BBGKVPV_2026
+  const defaultRv = o.year === 2026 ? BBGRVALV_2026 : BBGRVALV_2025
+  const defaultKv = o.year === 2026 ? BBGKVPV_2026 : BBGKVPV_2025
+  const bbgRvAlv = opts?.bbgRvAlv ?? defaultRv
+  const bbgKvPv = opts?.bbgKvPv ?? defaultKv
   const zre4vprRv = Math.min(zre4vp, bbgRvAlv)
   const vspRenten = o.krv === 1 ? 0 : Math.floor(zre4vprRv * RVSATZAN_2026 * 100) / 100
 
