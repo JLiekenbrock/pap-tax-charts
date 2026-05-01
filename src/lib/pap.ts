@@ -15,6 +15,20 @@ export type PapOptions = {
   pkpv?: number // monthly private basic health/care premium in cents
   pkpvagz?: number // monthly employer subsidy for private insurance in cents
   investmentIncome?: number // annual investment income in EUR
+  /**
+   * Pro-mode override for the Beitragsbemessungsgrenze KV/PV (annual EUR).
+   * If unset, the year-specific default is used. Use this to model future
+   * reform scenarios (e.g. the EUR 300/month outsized hike from the 2026
+   * Kabinettsbeschluss).
+   */
+  bbgKvPv?: number
+  /** Pro-mode override for the BBG RV/AV (annual EUR). */
+  bbgRvAlv?: number
+  /**
+   * Pro-mode override for the Jahresarbeitsentgeltgrenze (JAEG, annual EUR).
+   * Affects only the PKV-eligibility warning, not the calculation itself.
+   */
+  jaeg?: number
 }
 
 // Reasonable default assumptions (documented):
@@ -23,7 +37,11 @@ export type PapOptions = {
 // - solidarity (Solz) threshold for 2026: 20350 EUR (as in Lohnsteuer2026 excerpt)
 // These are approximations until the full PAP port is added.
 
-const DEFAULTS: Required<PapOptions> = {
+// Default values for the *core* PAP options. The pro-mode override fields
+// (bbgKvPv, bbgRvAlv, jaeg) intentionally have no default — when absent, the
+// year-specific constants (BBGKVPV_2026 etc.) are used inside the calc.
+type CoreDefaults = Required<Omit<PapOptions, 'bbgKvPv' | 'bbgRvAlv' | 'jaeg'>>
+const DEFAULTS: CoreDefaults = {
   year: 2026,
   filing: 'single',
   children: 0,
@@ -69,7 +87,8 @@ const SOLZ_FREE_2026 = 20350
 export const JAEG_2025 = 73_800
 export const JAEG_2026 = 77_400
 
-export function jaegFor(year: number): number {
+export function jaegFor(year: number, override?: number): number {
+  if (typeof override === 'number' && override > 0) return override
   return year === 2026 ? JAEG_2026 : JAEG_2025
 }
 
@@ -278,10 +297,13 @@ function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   }
 
   const zre4vp = Math.max(0, re4)
-  const zre4vprRv = Math.min(zre4vp, BBGRVALV_2026)
+  // Allow scenario overrides (pro mode) to substitute custom BBGs.
+  const bbgRvAlv = opts?.bbgRvAlv ?? BBGRVALV_2026
+  const bbgKvPv = opts?.bbgKvPv ?? BBGKVPV_2026
+  const zre4vprRv = Math.min(zre4vp, bbgRvAlv)
   const vspRenten = o.krv === 1 ? 0 : Math.floor(zre4vprRv * RVSATZAN_2026 * 100) / 100
 
-  const zre4vprKvPv = Math.min(zre4vp, BBGKVPV_2026)
+  const zre4vprKvPv = Math.min(zre4vp, bbgKvPv)
   let pvsatzan = o.pvs === 1 ? 0.023 : PVSATZAN_2026
   pvsatzan = o.pvz === 1 ? pvsatzan + 0.006 : pvsatzan - o.pva * 0.0025
   const kvsatzan = KVSATZAN_2026 + (o.kvz / 2) / 100

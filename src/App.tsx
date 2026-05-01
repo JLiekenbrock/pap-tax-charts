@@ -48,6 +48,7 @@ const DEFAULT_SETTINGS: PapExplorerSettings = {
   pkv: 0,
   pkpv: 0,
   pkpvagz: 0,
+  proMode: false,
 }
 
 export default function App() {

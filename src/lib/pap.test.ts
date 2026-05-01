@@ -143,6 +143,45 @@ describe('Private health insurance (PKV)', () => {
     expect(JAEG_2026).toBeGreaterThan(JAEG_2025)
   })
 
+  it('honors a pro-mode bbgKvPv override (raised cap → larger deduction)', () => {
+    // High earner, well above both the default and overridden BBGKVPV.
+    const baseline = calculatePapResultFromRE4(150_000, {
+      year: 2026,
+      filing: 'single',
+      children: 0,
+      solidarity: false,
+      churchRate: 0,
+    })
+    const reformed = calculatePapResultFromRE4(150_000, {
+      year: 2026,
+      filing: 'single',
+      children: 0,
+      solidarity: false,
+      churchRate: 0,
+      bbgKvPv: 73_350, // Kabinett 2026 reform
+    })
+    expect(reformed.vspKrankenPflege).toBeGreaterThan(baseline.vspKrankenPflege)
+    // Higher deductible → lower ZVE → lower income tax.
+    expect(reformed.tax).toBeLessThan(baseline.tax)
+  })
+
+  it('honors a pro-mode bbgRvAlv override (raised cap → more pension contributions)', () => {
+    const baseline = calculatePapResultFromRE4(150_000, { year: 2026, solidarity: false })
+    const reformed = calculatePapResultFromRE4(150_000, {
+      year: 2026,
+      solidarity: false,
+      bbgRvAlv: 121_680, // hypothetical Klingbeil pension cap
+    })
+    expect(reformed.vspRenten).toBeGreaterThan(baseline.vspRenten)
+    expect(reformed.vspArbeitslosen).toBeGreaterThan(baseline.vspArbeitslosen)
+  })
+
+  it('jaegFor accepts a positive override and ignores zero/undefined', () => {
+    expect(jaegFor(2026, 81_000)).toBe(81_000)
+    expect(jaegFor(2026, 0)).toBe(JAEG_2026)
+    expect(jaegFor(2026)).toBe(JAEG_2026)
+  })
+
   it('PKV with low premium increases tax vs equivalent GKV (smaller deduction)', () => {
     // GKV is the baseline.
     const gkv = calculatePapResultFromRE4(80_000, {
