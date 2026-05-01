@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { JAEG_2025, JAEG_2026, calculatePapTax, calculatePapResultFromRE4, jaegFor } from './pap'
+import {
+  JAEG_2025,
+  JAEG_2026,
+  calculatePapForMarriedHouseholdTotal,
+  calculatePapTax,
+  calculatePapResultFromRE4,
+  jaegFor,
+} from './pap'
+import { actualContributions } from './rates'
 
 describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
   it('returns 0 below basic allowance', () => {
@@ -242,5 +250,34 @@ describe('Private health insurance (PKV)', () => {
     })
     expect(pkv.vspKrankenPflege).toBeLessThan(gkv.vspKrankenPflege)
     expect(pkv.tax).toBeGreaterThan(gkv.tax)
+  })
+})
+
+describe('married household two-earner model', () => {
+  const marriedOpts = {
+    year: 2026 as const,
+    filing: 'married' as const,
+    stkl: 4 as const,
+    children: 0,
+    solidarity: false,
+    churchRate: 0,
+    pkv: 0 as const,
+    kvz: 1.7,
+  }
+
+  it('runs VSP per earner and attaches marriedEarners slices', () => {
+    const twoEarner = calculatePapResultFromRE4(80_000, { ...marriedOpts, partnerRe4: 80_000 })
+    expect(twoEarner.marriedEarners).toBeDefined()
+    expect(twoEarner.marriedEarners![0].income).toBe(80_000)
+    expect(twoEarner.marriedEarners![1].income).toBe(80_000)
+    const lump = calculatePapResultFromRE4(160_000, marriedOpts)
+    expect(actualContributions(twoEarner)).toBeGreaterThan(actualContributions(lump))
+  })
+
+  it('calculatePapForMarriedHouseholdTotal keeps the reference income ratio', () => {
+    const r = calculatePapForMarriedHouseholdTotal(100_000, 60_000, 40_000, marriedOpts)
+    expect(r.income).toBe(100_000)
+    expect(r.marriedEarners![0].income).toBe(60_000)
+    expect(r.marriedEarners![1].income).toBe(40_000)
   })
 })

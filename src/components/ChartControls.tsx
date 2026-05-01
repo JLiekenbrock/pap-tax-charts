@@ -1,5 +1,6 @@
 import React from 'react'
 import { ChartMetric, ChartMode, RateBasis, CHART_METRICS } from './TaxChart'
+import type { PapExplorerSettings } from './TaxInput'
 
 type Props = {
   chartMode: ChartMode
@@ -8,6 +9,9 @@ type Props = {
   onRateBasisChange: (next: RateBasis) => void
   metrics: ChartMetric[]
   onMetricsChange: (next: ChartMetric[]) => void
+  filing?: PapExplorerSettings['filing']
+  marriedSocialSplit?: boolean
+  onMarriedSocialSplitChange?: (next: boolean) => void
 }
 
 const MODES: Array<{ value: ChartMode; label: string }> = [
@@ -25,6 +29,9 @@ export default function ChartControls({
   onRateBasisChange,
   metrics,
   onMetricsChange,
+  filing = 'single',
+  marriedSocialSplit = false,
+  onMarriedSocialSplitChange,
 }: Props) {
   const toggleMetric = (metric: ChartMetric) => {
     if (metrics.includes(metric)) {
@@ -66,6 +73,20 @@ export default function ChartControls({
               Per ZVE
             </button>
           </div>
+        </div>
+      )}
+
+      {chartMode === 'lines' && filing === 'married' && onMarriedSocialSplitChange && (
+        <div className="chart-controls-row">
+          <div className="chart-controls-label">Married</div>
+          <label className="checkbox-row metric-option">
+            <input
+              type="checkbox"
+              checked={marriedSocialSplit}
+              onChange={(e) => onMarriedSocialSplitChange(e.target.checked)}
+            />
+            Split social metrics by earner (RV / KV+PV / AV)
+          </label>
         </div>
       )}
 

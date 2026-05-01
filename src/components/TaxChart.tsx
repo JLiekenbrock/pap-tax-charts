@@ -13,17 +13,24 @@ import {
   Legend,
   Filler,
 } from 'chart.js'
-import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from '../lib/pap'
+import {
+  PapCalculationResult,
+  PapOptions,
+  calculatePapForMarriedHouseholdTotal,
+  calculatePapResultFromRE4,
+  type MarriedEarnerSlice,
+} from '../lib/pap'
 import {
   MarginalDecomposition,
   RateBasis,
   actualContributions,
+  marriedEarnerEmployeeSocial,
   marginalDecomposition,
   marginalTaxRate,
 } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
 
-function toPapOptions(settings: PapExplorerSettings): PapOptions {
+export function toPapOptions(settings: PapExplorerSettings): PapOptions {
   const {
     income: _income,
     income1: _income1,
@@ -94,6 +101,23 @@ export const CHART_METRICS: MetricConfig[] = [
   { key: 'vspKrankenPflege', label: 'Health/care', color: '#9333EA', unit: 'eur', value: (point) => point.vspKrankenPflege },
   { key: 'vspArbeitslosen', label: 'Unemployment', color: '#D97706', unit: 'eur', value: (point) => point.vspArbeitslosen },
 ]
+
+const METRICS_WITH_MARRIED_SOCIAL_SPLIT: ChartMetric[] = ['vsp', 'vspRenten', 'vspKrankenPflege', 'vspArbeitslosen']
+
+function earnerMetricValue(metric: ChartMetric, slice: MarriedEarnerSlice): number {
+  switch (metric) {
+    case 'vsp':
+      return marriedEarnerEmployeeSocial(slice)
+    case 'vspRenten':
+      return slice.vspRenten
+    case 'vspKrankenPflege':
+      return slice.vspKrankenPflege
+    case 'vspArbeitslosen':
+      return slice.vspArbeitslosen
+    default:
+      return 0
+  }
+}
 
 export type ChartMode = 'lines' | 'stacked' | 'percent' | 'rates' | 'decomposition'
 export type { RateBasis }
@@ -173,6 +197,7 @@ export default function TaxChart({
   vspInRates,
   vspInComposition,
   investmentInRates,
+  marriedSocialSplit = false,
 }: {
   series: PapCalculationResult[]
   currentIncome: number
@@ -183,6 +208,8 @@ export default function TaxChart({
   vspInRates: boolean
   vspInComposition: boolean
   investmentInRates: boolean
+  /** When married, split RV/KV/AV lines across earners (lines mode, social metrics only). */
+  marriedSocialSplit?: boolean
 }) {
   const lineMetrics = React.useMemo(() => {
     const selected = metrics.map((metric) => metricConfig(metric))
@@ -253,13 +280,25 @@ export default function TaxChart({
     const maxIncome = Math.max(minIncome, settings.rangeMax)
     const interval = 1000
     const opts = toPapOptions(settings)
+    const marriedChartRef =
+      settings.filing === 'married'
+        ? { income1: settings.income1, income2: settings.income2 }
+        : undefined
     const points: PapCalculationResult[] = []
     for (let income = minIncome; income <= maxIncome; income += interval) {
-      points.push(calculatePapResultFromRE4(income, opts))
+      points.push(
+        marriedChartRef
+          ? calculatePapForMarriedHouseholdTotal(income, marriedChartRef.income1, marriedChartRef.income2, opts)
+          : calculatePapResultFromRE4(income, opts),
+      )
     }
     const last = points[points.length - 1]
     if (!last || last.income !== maxIncome) {
-      points.push(calculatePapResultFromRE4(maxIncome, opts))
+      points.push(
+        marriedChartRef
+          ? calculatePapForMarriedHouseholdTotal(maxIncome, marriedChartRef.income1, marriedChartRef.income2, opts)
+          : calculatePapResultFromRE4(maxIncome, opts),
+      )
     }
     return points
   }, [mode, series.length, settings])
@@ -267,18 +306,31 @@ export default function TaxChart({
   const decompositionRates = React.useMemo(() => {
     if (mode !== 'decomposition') return [] as MarginalDecomposition[]
     const opts = toPapOptions(settings)
-    return ratesSeries.map((point) => marginalDecomposition(point.income, opts, rateBasis))
+    const marriedChartRef =
+      settings.filing === 'married'
+        ? { income1: settings.income1, income2: settings.income2 }
+        : undefined
+    return ratesSeries.map((point) =>
+      marginalDecomposition(point.income, opts, rateBasis, { marriedChartRef }),
+    )
   }, [mode, ratesSeries, settings, rateBasis])
 
   const marginalRates = React.useMemo(() => {
     if (mode !== 'rates') return [] as (number | null)[]
     const opts = toPapOptions(settings)
+    const marriedChartRef =
+      settings.filing === 'married'
+        ? { income1: settings.income1, income2: settings.income2 }
+        : undefined
     // Use null for points with too small a denominator so the chart skips them
     // instead of showing huge spikes (same logic as ratePercent).
     const raw = ratesSeries.map((point) => {
       const denom = rateBasis === 'zve' ? point.zve : point.income
       if (denom < 1000) return null
-      return marginalTaxRate(point.income, opts, rateBasis, { includeVspInRate: vspInRates })
+      return marginalTaxRate(point.income, opts, rateBasis, {
+        includeVspInRate: vspInRates,
+        marriedChartRef,
+      })
     })
     // Centered moving average (window=5) to smooth out single-point spikes caused
     // by PAP bracket transitions and VSP BBG (Beitragsbemessungsgrenze) thresholds.
@@ -414,18 +466,62 @@ export default function TaxChart({
                 yAxisID: 'yPercent',
               }))
             })()
-        : lineMetrics.map((config): ChartDataset<'line'> => {
-        return {
-          label: config.label,
-          data: series.map((point) => ({ x: point.income, y: config.value(point) })),
-          borderColor: config.color,
-          backgroundColor: config.color,
-          borderWidth: config.key === 'tax' ? 3 : 2,
-          pointRadius: 0,
-          tension: 0.18,
-          yAxisID: 'y',
-        }
-      }),
+        : (() => {
+            const canSplitSocial =
+              marriedSocialSplit &&
+              settings.filing === 'married' &&
+              series.some((p) => p.marriedEarners != null)
+            return lineMetrics.flatMap((config): ChartDataset<'line'>[] => {
+              if (canSplitSocial && METRICS_WITH_MARRIED_SOCIAL_SPLIT.includes(config.key)) {
+                return [
+                  {
+                    label: `${config.label} · earner 1`,
+                    data: series.map((point) => ({
+                      x: point.income,
+                      y: point.marriedEarners
+                        ? earnerMetricValue(config.key, point.marriedEarners[0])
+                        : config.value(point),
+                    })) as any,
+                    borderColor: config.color,
+                    backgroundColor: config.color,
+                    borderWidth: config.key === 'tax' ? 3 : 2,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    tension: 0.18,
+                    yAxisID: 'y',
+                  },
+                  {
+                    label: `${config.label} · earner 2`,
+                    data: series.map((point) => ({
+                      x: point.income,
+                      y: point.marriedEarners
+                        ? earnerMetricValue(config.key, point.marriedEarners[1])
+                        : 0,
+                    })) as any,
+                    borderColor: config.color + 'AA',
+                    backgroundColor: config.color + 'AA',
+                    borderWidth: 2,
+                    borderDash: [2, 3],
+                    pointRadius: 0,
+                    tension: 0.18,
+                    yAxisID: 'y',
+                  },
+                ]
+              }
+              return [
+                {
+                  label: config.label,
+                  data: series.map((point) => ({ x: point.income, y: config.value(point) })) as any,
+                  borderColor: config.color,
+                  backgroundColor: config.color,
+                  borderWidth: config.key === 'tax' ? 3 : 2,
+                  pointRadius: 0,
+                  tension: 0.18,
+                  yAxisID: 'y',
+                },
+              ]
+            })
+          })(),
   }
 
   const options = {
@@ -517,7 +613,7 @@ export default function TaxChart({
 
   // Chart.js often fails to refresh stacked/category bar data when only values
   // change; include year (and mode) in the key so toggling tax year remounts.
-  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}`
+  const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}-${marriedSocialSplit}`
 
   return (
     <section className="chart-panel">

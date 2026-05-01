@@ -29,6 +29,13 @@ export type PapOptions = {
    * Affects only the PKV-eligibility warning, not the calculation itself.
    */
   jaeg?: number
+  /**
+   * When `filing === 'married'`, treat the first `re4` as earner 1 and this as
+   * earner 2: each gets their own Werbungskosten-Pauschale and VSP/BBG path;
+   * income tax still uses joint ZVE and Ehegattensplitting (`kztab === 2`).
+   * If omitted, the legacy single-RE4 lump (combined gross in one SV run) is used.
+   */
+  partnerRe4?: number
 }
 
 // Reasonable default assumptions (documented):
@@ -40,7 +47,7 @@ export type PapOptions = {
 // Default values for the *core* PAP options. The pro-mode override fields
 // (bbgKvPv, bbgRvAlv, jaeg) intentionally have no default — when absent, the
 // year-specific constants (BBGKVPV_2026 etc.) are used inside the calc.
-type CoreDefaults = Required<Omit<PapOptions, 'bbgKvPv' | 'bbgRvAlv' | 'jaeg'>>
+type CoreDefaults = Required<Omit<PapOptions, 'bbgKvPv' | 'bbgRvAlv' | 'jaeg' | 'partnerRe4'>>
 const DEFAULTS: CoreDefaults = {
   year: 2026,
   filing: 'single',
@@ -122,6 +129,14 @@ const RVSATZAN_2026 = 0.093
 const KVSATZAN_2026 = 0.07
 const PVSATZAN_2026 = 0.018
 
+/** One spouse in a two-earner married PAP household (employee social breakdown only). */
+export type MarriedEarnerSlice = {
+  income: number
+  vspRenten: number
+  vspKrankenPflege: number
+  vspArbeitslosen: number
+}
+
 export type PapCalculationResult = {
   income: number
   investmentIncome: number
@@ -159,6 +174,11 @@ export type PapCalculationResult = {
   church: number
   tax: number
   lstlzz: number
+  /**
+   * Per-earner wage gross and social lines when modelling married households
+   * with {@link PapOptions.partnerRe4}; omitted for single filers or lump-sum married.
+   */
+  marriedEarners?: readonly [MarriedEarnerSlice, MarriedEarnerSlice]
 }
 
 // Core implementation: port of UPTAB25() (tariff 2025) from the PAP implementation
@@ -231,12 +251,12 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
 
   // Single filer: compute tariff using UPTAB25 when year is 2025 (default)
   if (o.year === 2025 || o.year === 2026) {
-    const kztab = o.filing === 'married' || o.stkl === 3 ? 2 : 1
+    const kztab = o.stkl === 3 ? 2 : 1
     const base = o.year === 2026 ? uptab26(taxable, kztab) : uptab25(taxable, kztab)
     const solz = computeWageSoli(base, o.solidarity, o.year, kztab)
     const church = Math.round(base * (o.churchRate || 0))
     const payrollTax = base + solz + church
-    const saverAllowance = o.filing === 'married' ? 2000 : 1000
+    const saverAllowance = 1000
     const investmentTaxable = Math.max(0, (o.investmentIncome || 0) - saverAllowance)
     const investmentTax = Math.round(investmentTaxable * 0.25)
     const investmentSolz = o.solidarity ? Math.round(investmentTax * 0.055) : 0
@@ -248,7 +268,7 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
   const z = (taxable - 10908) / 10000
   const rate = 0.14 + 0.28 * Math.min(1, Math.max(0, z) / 4)
   const payrollTax = Math.round(Math.max(0, taxable - 10908) * rate)
-  const saverAllowance = o.filing === 'married' ? 2000 : 1000
+  const saverAllowance = 1000
   const investmentTaxable = Math.max(0, (o.investmentIncome || 0) - saverAllowance)
   const investmentTax = Math.round(investmentTaxable * 0.25)
   const investmentSolz = o.solidarity ? Math.round(investmentTax * 0.055) : 0
@@ -362,8 +382,122 @@ export function computeVorsorgePauschale(re4: number, opts?: PapOptions): number
   return computeVorsorgeDetails(re4, opts).vsp
 }
 
+/**
+ * Scale a married household to `householdGross` while keeping the same **share**
+ * of gross between earners as `referenceIncome1` : `referenceIncome2` (used for x-axis sweeps).
+ */
+export function calculatePapForMarriedHouseholdTotal(
+  householdGross: number,
+  referenceIncome1: number,
+  referenceIncome2: number,
+  opts?: PapOptions,
+): PapCalculationResult {
+  const g = Math.max(0, Math.round(householdGross))
+  const s = Math.max(0, referenceIncome1) + Math.max(0, referenceIncome2)
+  const ratio = s > 0 ? Math.max(0, referenceIncome1) / s : 0.5
+  const re4a = Math.round(g * ratio)
+  const re4b = Math.max(0, g - re4a)
+  return calculateMarriedHouseholdFromIncomes(re4a, re4b, opts)
+}
+
+function calculateMarriedHouseholdFromIncomes(re4a: number, re4b: number, opts?: PapOptions): PapCalculationResult {
+  const o = { ...DEFAULTS, ...(opts || {}) }
+  const kfbPerChild = o.year === 2026 ? KFB_PER_CHILD_2026 : KFB_PER_CHILD_2025
+  const kfb = kfbPerChild * (o.children || 0)
+  const efa = o.stkl === 2 ? 4260 : 0
+  const anpA = o.stkl && o.stkl < 6 && re4a > 0 ? Math.min(Math.ceil(re4a), 1230) : 0
+  const anpB = o.stkl && o.stkl < 6 && re4b > 0 ? Math.min(Math.ceil(re4b), 1230) : 0
+  const sap = 36
+  const ztabfb = Math.floor(efa + anpA + anpB + sap + kfb)
+  const anp = anpA + anpB
+
+  const d1 = computeVorsorgeDetails(re4a, opts)
+  const d2 = computeVorsorgeDetails(re4b, opts)
+  const vspTotal = d1.vsp + d2.vsp
+  const totalRe4 = re4a + re4b
+  const zve = Math.max(0, Math.floor(totalRe4 - ztabfb - d1.vsp - d2.vsp))
+
+  const kztab = 2
+  const gfb = o.year === 2026 ? GFB_2026 : GFB_2025
+  const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve, kztab)
+
+  const wageSolz = computeWageSoli(base, o.solidarity, o.year, kztab)
+  const wageChurch = Math.round(base * (o.churchRate || 0))
+  const payrollTax = base + wageSolz + wageChurch
+
+  const investmentIncome = Math.max(0, o.investmentIncome || 0)
+  const saverAllowance = 2000
+  const investmentTaxable = Math.max(0, investmentIncome - saverAllowance)
+  const investmentTax = Math.round(investmentTaxable * 0.25)
+  const investmentSolz = o.solidarity ? Math.round(investmentTax * 0.055) : 0
+  const investmentChurch = Math.round(investmentTax * (o.churchRate || 0))
+
+  const baseTax = base + investmentTax
+  const solz = wageSolz + investmentSolz
+  const church = wageChurch + investmentChurch
+  const tax = payrollTax + investmentTax + investmentSolz + investmentChurch
+  const vfrb = Math.floor(anp)
+  const wvfrb = Math.max(0, Math.floor(zve - gfb))
+
+  const marriedEarners: [MarriedEarnerSlice, MarriedEarnerSlice] = [
+    {
+      income: re4a,
+      vspRenten: d1.vspRenten,
+      vspKrankenPflege: d1.vspKrankenPflege,
+      vspArbeitslosen: d1.vspArbeitslosen,
+    },
+    {
+      income: re4b,
+      vspRenten: d2.vspRenten,
+      vspKrankenPflege: d2.vspKrankenPflege,
+      vspArbeitslosen: d2.vspArbeitslosen,
+    },
+  ]
+
+  return {
+    income: totalRe4,
+    investmentIncome,
+    totalIncome: totalRe4 + investmentIncome,
+    stkl: o.stkl,
+    year: o.year,
+    kztab,
+    gfb,
+    anp,
+    efa,
+    sap,
+    kfb,
+    ztabfb,
+    vsp: vspTotal,
+    zre4vp: d1.zre4vp + d2.zre4vp,
+    vspRenten: d1.vspRenten + d2.vspRenten,
+    vspKrankenPflege: d1.vspKrankenPflege + d2.vspKrankenPflege,
+    vspArbeitslosen: d1.vspArbeitslosen + d2.vspArbeitslosen,
+    vsphb: d1.vsphb + d2.vsphb,
+    vspn: d1.vspn + d2.vspn,
+    zve,
+    vfrb,
+    wvfrb,
+    base,
+    baseTax,
+    payrollTax,
+    investmentTaxable,
+    saverAllowance,
+    investmentTax,
+    investmentSolz,
+    investmentChurch,
+    solz,
+    church,
+    tax,
+    lstlzz: tax,
+    marriedEarners,
+  }
+}
+
 export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCalculationResult {
   const o = { ...DEFAULTS, ...(opts || {}) }
+  if (o.filing === 'married' && typeof o.partnerRe4 === 'number') {
+    return calculateMarriedHouseholdFromIncomes(Math.max(0, re4), Math.max(0, o.partnerRe4), opts)
+  }
   const { anp, efa, sap, kfb, ztabfb } = computeFixedAllowances(re4, o)
   const vspDetails = computeVorsorgeDetails(re4, o)
   const vsp = vspDetails.vsp
@@ -451,5 +585,6 @@ export function calculatePapSeries(currentIncome: number, opts?: PapOptions, poi
 export default {
   calculatePapTax,
   calculatePapResultFromRE4,
+  calculatePapForMarriedHouseholdTotal,
   calculatePapSeries,
 }

@@ -6,7 +6,7 @@ import { StklDerivation } from '../lib/stkl'
 // bbgRvAlv, jaeg) that should remain optional in the UI settings as well —
 // `undefined` means "use the year-specific default". Everything else is
 // required.
-type CorePapSettings = Required<Omit<PapOptions, 'bbgKvPv' | 'bbgRvAlv' | 'jaeg'>>
+type CorePapSettings = Required<Omit<PapOptions, 'bbgKvPv' | 'bbgRvAlv' | 'jaeg' | 'partnerRe4'>>
 
 export type PapExplorerSettings = CorePapSettings & {
   income: number

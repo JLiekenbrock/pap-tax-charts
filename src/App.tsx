@@ -1,11 +1,11 @@
 import React from 'react'
 import TaxInput, { PapExplorerSettings } from './components/TaxInput'
-import TaxChart, { ChartMetric, ChartMode, RateBasis } from './components/TaxChart'
+import TaxChart, { ChartMetric, ChartMode, RateBasis, toPapOptions } from './components/TaxChart'
 import ChartControls from './components/ChartControls'
 import Results from './components/Results'
 import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
-import { PapCalculationResult, calculatePapResultFromRE4 } from './lib/pap'
+import { PapCalculationResult, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4 } from './lib/pap'
 import { deriveStkl } from './lib/stkl'
 
 function clamp(value: number, min: number, max: number) {
@@ -18,10 +18,14 @@ function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
   const min = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
   const max = Math.max(min, settings.rangeMax)
   const step = (max - min) / (SERIES_POINTS - 1)
+  const opts = toPapOptions(settings)
 
   return Array.from({ length: SERIES_POINTS }, (_, index) => {
     const income = Math.round(min + step * index)
-    return calculatePapResultFromRE4(income, settings)
+    if (settings.filing === 'married') {
+      return calculatePapForMarriedHouseholdTotal(income, settings.income1, settings.income2, opts)
+    }
+    return calculatePapResultFromRE4(income, opts)
   })
 }
 
@@ -61,6 +65,7 @@ export default function App() {
   const [vspInRates, setVspInRates] = React.useState(true)
   const [vspInComposition, setVspInComposition] = React.useState(true)
   const [investmentInRates, setInvestmentInRates] = React.useState(true)
+  const [marriedSocialSplit, setMarriedSocialSplit] = React.useState(false)
 
   const stklDerivation = React.useMemo(
     () =>
@@ -95,21 +100,18 @@ export default function App() {
     }
   }, [settings, stklDerivation])
 
-  const current = React.useMemo(
-    () => calculatePapResultFromRE4(normalizedSettings.income, normalizedSettings),
-    [normalizedSettings],
-  )
-  const seriesSettings = React.useMemo<PapExplorerSettings>(() => ({
-    ...normalizedSettings,
-    // Series depends on range and tax options, not on the currently selected income point.
-    income: normalizedSettings.rangeMin,
-    income1: normalizedSettings.rangeMin,
-    income2: 0,
-    // Keep a single `normalizedSettings` dependency so every tax input (year, pro
-    // overrides, etc.) reliably invalidates the series — an explicit field list
-    // silently dropped updates (e.g. proMode / BBG) before.
-  }), [normalizedSettings])
-  const series = React.useMemo(() => buildSeries(seriesSettings), [seriesSettings])
+  const papOpts = React.useMemo(() => toPapOptions(normalizedSettings), [normalizedSettings])
+
+  const current = React.useMemo(() => {
+    if (normalizedSettings.filing === 'married') {
+      return calculatePapResultFromRE4(normalizedSettings.income1, {
+        ...papOpts,
+        partnerRe4: normalizedSettings.income2,
+      })
+    }
+    return calculatePapResultFromRE4(normalizedSettings.income, papOpts)
+  }, [normalizedSettings, papOpts])
+  const series = React.useMemo(() => buildSeries(normalizedSettings), [normalizedSettings])
 
   return (
     <main className="app-shell">
@@ -135,6 +137,9 @@ export default function App() {
             onRateBasisChange={setRateBasis}
             metrics={metrics}
             onMetricsChange={setMetrics}
+            filing={normalizedSettings.filing}
+            marriedSocialSplit={marriedSocialSplit}
+            onMarriedSocialSplitChange={setMarriedSocialSplit}
           />
           <TaxChart
             series={series}
@@ -146,6 +151,7 @@ export default function App() {
             vspInRates={vspInRates}
             vspInComposition={vspInComposition}
             investmentInRates={investmentInRates}
+            marriedSocialSplit={marriedSocialSplit}
           />
           <Results
             result={current}

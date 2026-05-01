@@ -1,4 +1,4 @@
-import { PapCalculationResult, PapOptions, calculatePapResultFromRE4, jaegFor } from './pap'
+import { PapCalculationResult, PapOptions, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4, jaegFor } from './pap'
 import { actualContributions, marginalTaxRate } from './rates'
 
 export type TipTone = 'serious' | 'cheeky' | 'absurd'
@@ -28,8 +28,22 @@ export type TipInputs = {
  * Run a counterfactual PAP calculation with `overrides` applied on top of
  * the user's current settings. Used to estimate "what would I owe if X?".
  */
-function counterfactual(income: number, base: PapOptions, overrides: PapOptions): PapCalculationResult {
-  return calculatePapResultFromRE4(income, { ...base, ...overrides })
+function counterfactual(
+  income: number,
+  base: PapOptions,
+  overrides: PapOptions,
+  marriedSplitRef?: { income1: number; income2: number },
+): PapCalculationResult {
+  const merged = { ...base, ...overrides }
+  if (merged.filing === 'married' && marriedSplitRef) {
+    return calculatePapForMarriedHouseholdTotal(
+      income,
+      marriedSplitRef.income1,
+      marriedSplitRef.income2,
+      merged,
+    )
+  }
+  return calculatePapResultFromRE4(income, merged)
 }
 
 export function computeTips({ result, options, partner1Income, partner2Income }: TipInputs): Tip[] {
@@ -39,6 +53,11 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
   const investmentIncome = options.investmentIncome ?? 0
   const churchRate = options.churchRate ?? 0
   const solidarity = options.solidarity ?? false
+  const marriedSplitRef =
+    filing === 'married' && partner1Income !== undefined && partner2Income !== undefined
+      ? { income1: Math.max(0, partner1Income), income2: Math.max(0, partner2Income) }
+      : undefined
+  const marriedChartRef = marriedSplitRef
 
   // Marginal payroll-tax rate per EUR of additional ZVE, expressed as a
   // fraction (e.g. 0.37 = 37 %). This is the headline multiplier for any
@@ -46,7 +65,11 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
   // EUR 1,230 Pauschbetrag, etc.). Includes Soli + church.
   // `marginalTaxRate` returns a percentage, so divide by 100.
   const marginalZveRate = result.income > 0
-    ? marginalTaxRate(result.income, options, 'zve', { delta: 1000, includeVspInRate: false }) / 100
+    ? marginalTaxRate(result.income, options, 'zve', {
+        delta: 1000,
+        includeVspInRate: false,
+        marriedChartRef,
+      }) / 100
     : 0
 
   // ---- Serious wins -------------------------------------------------------
@@ -66,8 +89,8 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
 
   // Salary -> capital-gains arbitrage (Abgeltungsteuer 25% beats top marginal).
   if (result.income > 0) {
-    const upper = counterfactual(result.income + 1000, options, {})
-    const lower = counterfactual(Math.max(0, result.income - 1000), options, {})
+    const upper = counterfactual(result.income + 1000, options, {}, marriedSplitRef)
+    const lower = counterfactual(Math.max(0, result.income - 1000), options, {}, marriedSplitRef)
     const span = (result.income + 1000) - Math.max(0, result.income - 1000)
     const marginalSalaryRate = span > 0 ? (upper.payrollTax - lower.payrollTax) / span : 0
     const cgtRate = 0.25 * (1 + (solidarity ? 0.055 : 0) + churchRate)
@@ -189,7 +212,7 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
 
   // Marry someone with no income.
   if (filing === 'single' && result.income > 25_000) {
-    const married = counterfactual(result.income, options, { filing: 'married' })
+    const married = counterfactual(result.income, options, { filing: 'married' }, marriedSplitRef)
     const savings = result.tax - married.tax
     if (savings > 100) {
       tips.push({
@@ -206,8 +229,8 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
 
   // Have children (Kinderfreibetrag wins at higher incomes).
   if (children === 0 && result.income > 50_000) {
-    const oneChild = counterfactual(result.income, options, { children: 1 })
-    const twoChildren = counterfactual(result.income, options, { children: 2 })
+    const oneChild = counterfactual(result.income, options, { children: 1 }, marriedSplitRef)
+    const twoChildren = counterfactual(result.income, options, { children: 2 }, marriedSplitRef)
     const oneSavings = result.tax - oneChild.tax
     const twoSavings = result.tax - twoChildren.tax
     if (oneSavings > 100) {
@@ -225,7 +248,7 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
 
   // Kirchenaustritt.
   if (churchRate > 0) {
-    const noChurch = counterfactual(result.income, options, { churchRate: 0 })
+    const noChurch = counterfactual(result.income, options, { churchRate: 0 }, marriedSplitRef)
     const savings = result.tax - noChurch.tax
     if (savings > 0) {
       tips.push({
@@ -271,6 +294,7 @@ export function computeTips({ result, options, partner1Income, partner2Income }:
       const marginalBurdenPct = marginalTaxRate(result.income, options, 'gross', {
         delta: 500,
         includeVspInRate: true,
+        marriedChartRef,
       })
       tips.push({
         id: 'bbg-sprint',

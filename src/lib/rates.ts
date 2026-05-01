@@ -1,4 +1,4 @@
-import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from './pap'
+import { PapCalculationResult, PapOptions, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4, type MarriedEarnerSlice } from './pap'
 
 export type RateBasis = 'gross' | 'zve'
 
@@ -19,6 +19,24 @@ export type RateBasis = 'gross' | 'zve'
  */
 export function actualContributions(point: PapCalculationResult): number {
   return point.vspRenten + point.vspKrankenPflege + point.vspArbeitslosen
+}
+
+/** Employee RV + KV+PV + AV for one earner in a {@link PapCalculationResult.marriedEarners} slice. */
+export function marriedEarnerEmployeeSocial(slice: MarriedEarnerSlice): number {
+  return slice.vspRenten + slice.vspKrankenPflege + slice.vspArbeitslosen
+}
+
+export type MarriedChartReferenceIncomes = { income1: number; income2: number }
+
+function papAtIncomeLevel(
+  gross: number,
+  options: PapOptions,
+  marriedRef: MarriedChartReferenceIncomes | undefined,
+): PapCalculationResult {
+  if (options.filing === 'married' && marriedRef) {
+    return calculatePapForMarriedHouseholdTotal(gross, marriedRef.income1, marriedRef.income2, options)
+  }
+  return calculatePapResultFromRE4(gross, options)
 }
 
 /**
@@ -45,6 +63,11 @@ export type MarginalTaxRateOptions = {
   delta?: number
   /** Include VSP (social contributions) in the numerator. */
   includeVspInRate?: boolean
+  /**
+   * When `options.filing === 'married'`, scale both earners along the x-axis using this split ratio
+   * (same logic as {@link calculatePapForMarriedHouseholdTotal}).
+   */
+  marriedChartRef?: MarriedChartReferenceIncomes
 }
 
 /**
@@ -63,12 +86,12 @@ export function marginalTaxRate(
   income: number,
   options: PapOptions,
   basis: RateBasis,
-  { delta = 500, includeVspInRate = false }: MarginalTaxRateOptions = {},
+  { delta = 500, includeVspInRate = false, marriedChartRef }: MarginalTaxRateOptions = {},
 ): number {
   const lowerIncome = Math.max(0, income - delta)
   const upperIncome = income + delta
-  const lower = calculatePapResultFromRE4(lowerIncome, options)
-  const upper = calculatePapResultFromRE4(upperIncome, options)
+  const lower = papAtIncomeLevel(lowerIncome, options, marriedChartRef)
+  const upper = papAtIncomeLevel(upperIncome, options, marriedChartRef)
 
   const basisDelta = basis === 'zve'
     ? upper.zve - lower.zve
@@ -114,12 +137,12 @@ export function marginalDecomposition(
   income: number,
   options: PapOptions,
   basis: RateBasis,
-  { delta = 500 }: { delta?: number } = {},
+  { delta = 500, marriedChartRef }: { delta?: number; marriedChartRef?: MarriedChartReferenceIncomes } = {},
 ): MarginalDecomposition {
   const lowerIncome = Math.max(0, income - delta)
   const upperIncome = income + delta
-  const lower = calculatePapResultFromRE4(lowerIncome, options)
-  const upper = calculatePapResultFromRE4(upperIncome, options)
+  const lower = papAtIncomeLevel(lowerIncome, options, marriedChartRef)
+  const upper = papAtIncomeLevel(upperIncome, options, marriedChartRef)
 
   const basisDelta = basis === 'zve'
     ? upper.zve - lower.zve
