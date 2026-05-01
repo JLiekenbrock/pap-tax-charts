@@ -155,8 +155,8 @@ select:focus {
 }
 
 .segmented-control {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px;
   border: 1px solid #d1d5db;
@@ -165,11 +165,22 @@ select:focus {
 }
 
 .segmented-control button {
+  flex: 1 1 auto;
+  min-width: 0;
   border: 0;
   border-radius: 5px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   background: transparent;
   color: #4b5563;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segmented-control button:hover:not(.active) {
+  background: #e5e7eb;
+  color: #111827;
 }
 
 .segmented-control button.active {
@@ -178,22 +189,85 @@ select:focus {
 }
 
 .secondary-control {
-  grid-template-columns: 1fr 1fr;
   margin-top: 10px;
 }
 
 .visual-pane {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-areas:
+    "controls controls"
+    "chart    results";
   gap: 18px;
+  align-items: start;
+}
+
+.chart-controls {
+  grid-area: controls;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.chart-controls-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.chart-controls-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chart-controls-metrics {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 10px;
+}
+
+.chart-controls-metrics summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #4b5563;
+  user-select: none;
+  list-style: none;
+}
+
+.chart-controls-metrics summary::-webkit-details-marker {
+  display: none;
+}
+
+.chart-controls-metrics summary::before {
+  content: "▸ ";
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 120ms ease;
+}
+
+.chart-controls-metrics[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.chart-controls-metrics .metric-grid {
+  margin-top: 10px;
 }
 
 .chart-panel {
+  grid-area: chart;
   min-height: 560px;
   padding: 14px;
 }
 
 .results-panel {
+  grid-area: results;
   padding: 16px;
 }
 

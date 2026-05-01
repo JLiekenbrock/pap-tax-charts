@@ -85,6 +85,9 @@ export type PapCalculationResult = {
   zve: number
   vfrb: number
   wvfrb: number
+  /** Pure income-tax bracket result (UPTAB), before Soli, church, or capital gains. */
+  base: number
+  /** `base + investmentTax`. Kept for backward compatibility — prefer `base` for the income-tax row in UIs. */
   baseTax: number
   payrollTax: number
   investmentTaxable: number
@@ -336,6 +339,7 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
     zve,
     vfrb,
     wvfrb,
+    base,
     baseTax,
     payrollTax,
     investmentTaxable,

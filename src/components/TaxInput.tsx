@@ -1,5 +1,4 @@
 import React from 'react'
-import { ChartMetric, ChartMode, RateBasis, CHART_METRICS } from './TaxChart'
 import { PapOptions } from '../lib/pap'
 
 export type PapExplorerSettings = Required<PapOptions> & {
@@ -17,12 +16,6 @@ export type PapExplorerSettings = Required<PapOptions> & {
 type Props = {
   settings: PapExplorerSettings
   onChange: (next: PapExplorerSettings) => void
-  metrics: ChartMetric[]
-  onMetricsChange: (next: ChartMetric[]) => void
-  chartMode: ChartMode
-  onChartModeChange: (next: ChartMode) => void
-  rateBasis: RateBasis
-  onRateBasisChange: (next: RateBasis) => void
 }
 
 function numberValue(value: string) {
@@ -88,7 +81,7 @@ function DeferredRangeInput({
   )
 }
 
-export default function TaxInput({ settings, onChange, metrics, onMetricsChange, chartMode, onChartModeChange, rateBasis, onRateBasisChange }: Props) {
+export default function TaxInput({ settings, onChange }: Props) {
   const update = <K extends keyof PapExplorerSettings>(key: K, value: PapExplorerSettings[K]) => {
     onChange({ ...settings, [key]: value })
   }
@@ -120,15 +113,6 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
         ? Math.max(1, Math.round(settings.children))
         : settings.kindergeldChildren,
     })
-  }
-
-  const toggleMetric = (metric: ChartMetric) => {
-    if (metrics.includes(metric)) {
-      const next = metrics.filter((item) => item !== metric)
-      onMetricsChange(next.length ? next : ['tax'])
-    } else {
-      onMetricsChange([...metrics, metric])
-    }
   }
 
   return (
@@ -273,50 +257,6 @@ export default function TaxInput({ settings, onChange, metrics, onMetricsChange,
         </label>
       </div>
 
-      <div className="control-section">
-        <h2>Chart</h2>
-        <div className="segmented-control" role="group" aria-label="Chart mode">
-          <button type="button" className={chartMode === 'lines' ? 'active' : ''} onClick={() => onChartModeChange('lines')}>
-            Lines
-          </button>
-          <button type="button" className={chartMode === 'stacked' ? 'active' : ''} onClick={() => onChartModeChange('stacked')}>
-            Stacked
-          </button>
-          <button type="button" className={chartMode === 'percent' ? 'active' : ''} onClick={() => onChartModeChange('percent')}>
-            Percent
-          </button>
-          <button type="button" className={chartMode === 'rates' ? 'active' : ''} onClick={() => onChartModeChange('rates')}>
-            Rates
-          </button>
-          <button type="button" className={chartMode === 'decomposition' ? 'active' : ''} onClick={() => onChartModeChange('decomposition')}>
-            Decomposition
-          </button>
-        </div>
-        {(chartMode === 'rates' || chartMode === 'decomposition') && (
-          <div className="segmented-control secondary-control" role="group" aria-label="Rate basis">
-            <button type="button" className={rateBasis === 'gross' ? 'active' : ''} onClick={() => onRateBasisChange('gross')}>
-              Per gross
-            </button>
-            <button type="button" className={rateBasis === 'zve' ? 'active' : ''} onClick={() => onRateBasisChange('zve')}>
-              Per ZVE
-            </button>
-          </div>
-        )}
-      </div>
-
-      {chartMode === 'lines' && (
-        <div className="control-section">
-          <h2>Chart metrics</h2>
-          <div className="metric-grid">
-            {CHART_METRICS.map((metric) => (
-              <label key={metric.key} className="checkbox-row metric-option">
-                <input type="checkbox" checked={metrics.includes(metric.key)} onChange={() => toggleMetric(metric.key)} />
-                {metric.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
     </aside>
   )
 }

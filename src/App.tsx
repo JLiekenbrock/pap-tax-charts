@@ -1,6 +1,7 @@
 import React from 'react'
 import TaxInput, { PapExplorerSettings } from './components/TaxInput'
 import TaxChart, { ChartMetric, ChartMode, RateBasis } from './components/TaxChart'
+import ChartControls from './components/ChartControls'
 import Results from './components/Results'
 import { PapCalculationResult, calculatePapResultFromRE4 } from './lib/pap'
 
@@ -126,14 +127,16 @@ export default function App() {
         <TaxInput
           settings={normalizedSettings}
           onChange={setSettings}
-          metrics={metrics}
-          onMetricsChange={setMetrics}
-          chartMode={chartMode}
-          onChartModeChange={setChartMode}
-          rateBasis={rateBasis}
-          onRateBasisChange={setRateBasis}
         />
         <div className="visual-pane">
+          <ChartControls
+            chartMode={chartMode}
+            onChartModeChange={setChartMode}
+            rateBasis={rateBasis}
+            onRateBasisChange={setRateBasis}
+            metrics={metrics}
+            onMetricsChange={setMetrics}
+          />
           <TaxChart
             series={series}
             currentIncome={normalizedSettings.income}

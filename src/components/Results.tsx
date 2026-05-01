@@ -28,7 +28,6 @@ export default function Results({
   const incomeAfterTax = Math.max(0, result.totalIncome - result.tax)
   const takeHomeCash = Math.max(0, result.totalIncome - result.tax - socialContributions)
   const kindergeld = settings.includeKindergeld ? settings.kindergeldChildren * KINDERGELD_MONTHLY_2026 * 12 : 0
-  const investmentTaxTotal = result.investmentTax + result.investmentSolz + result.investmentChurch
 
   // Pure tax rate (0 below the Grundfreibetrag/Steueruntergrenze).
   const salaryTaxRate = result.income > 0 ? (result.payrollTax / result.income) * 100 : 0
@@ -38,39 +37,49 @@ export default function Results({
   const salaryBurdenRate = result.income > 0 ? ((result.payrollTax + socialContributions) / result.income) * 100 : 0
   const totalBurdenRate = result.totalIncome > 0 ? ((result.tax + socialContributions) / result.totalIncome) * 100 : 0
 
-  const rows = [
-    ['Tax', eur(result.tax)],
-    ['Payroll tax', eur(result.payrollTax)],
-    ['Investment tax', eur(investmentTaxTotal)],
+  const rows: Array<[string, string]> = [
+    // Tax breakdown — components are kept independent and only shown when
+    // they're non-zero so we never display two rows with the same value.
+    ['Income tax', eur(result.base)],
+    ...(result.investmentTax > 0 ? [['Investment tax', eur(result.investmentTax)] as [string, string]] : []),
+    ...(result.solz > 0 ? [['Solidarity surcharge', eur(result.solz)] as [string, string]] : []),
+    ...(result.church > 0 ? [['Church tax', eur(result.church)] as [string, string]] : []),
+    ['Total tax', eur(result.tax)],
+    // Cash flows.
     ['Income after tax', eur(incomeAfterTax)],
-    ['Take-home cash (after tax & VSP)', eur(takeHomeCash)],
+    ['Social contributions', eur(socialContributions)],
+    ['Take-home cash', eur(takeHomeCash)],
     ...(settings.includeKindergeld ? [
-      ['Kindergeld', eur(kindergeld)],
-      ['Take-home incl. Kindergeld', eur(takeHomeCash + kindergeld)],
+      ['Kindergeld', eur(kindergeld)] as [string, string],
+      ['Take-home incl. Kindergeld', eur(takeHomeCash + kindergeld)] as [string, string],
     ] : []),
+    // Rates.
     ['Effective tax on salary', `${salaryTaxRate.toFixed(2)}%`],
     ...(vspInRates ? [
-      ['Effective burden (tax + VSP) on salary', `${salaryBurdenRate.toFixed(2)}%`],
+      ['Effective burden (tax + VSP) on salary', `${salaryBurdenRate.toFixed(2)}%`] as [string, string],
     ] : []),
     ...(result.investmentIncome > 0 ? [
-      ['Effective tax on total income', `${totalTaxRate.toFixed(2)}%`],
+      ['Effective tax on total income', `${totalTaxRate.toFixed(2)}%`] as [string, string],
       ...(vspInRates ? [
-        ['Effective burden (tax + VSP) on total income', `${totalBurdenRate.toFixed(2)}%`],
+        ['Effective burden (tax + VSP) on total income', `${totalBurdenRate.toFixed(2)}%`] as [string, string],
       ] : []),
     ] : []),
+    // Inputs / supporting values.
     ...(settings.filing === 'married' ? [
-      ['Income 1', eur(settings.income1)],
-      ['Income 2', eur(settings.income2)],
+      ['Income 1', eur(settings.income1)] as [string, string],
+      ['Income 2', eur(settings.income2)] as [string, string],
     ] : []),
-    ['Investment income', eur(result.investmentIncome)],
-    ['Saver allowance', eur(result.saverAllowance)],
-    ['Investment taxable', eur(result.investmentTaxable)],
+    ...(result.investmentIncome > 0 ? [
+      ['Investment income', eur(result.investmentIncome)] as [string, string],
+      ['Saver allowance', eur(result.saverAllowance)] as [string, string],
+      ['Investment taxable', eur(result.investmentTaxable)] as [string, string],
+    ] : []),
     ['Taxable income / ZVE', eur(result.zve)],
     ['ZTABFB', eur(result.ztabfb)],
-    ['VSP', eur(result.vsp)],
+    ['VSP (deductible)', eur(result.vsp)],
     ['Pension part', eur(result.vspRenten)],
     ['Health/care part', eur(result.vspKrankenPflege)],
-    ['Base tax', eur(result.baseTax)],
+    ['Unemployment part', eur(result.vspArbeitslosen)],
   ]
 
   return (
