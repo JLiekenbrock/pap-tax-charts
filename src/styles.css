@@ -581,6 +581,12 @@ select:focus {
   width: 100%;
 }
 
+.percentile-tax-decile-stack-host--dense,
+.percentile-tax-decile-compare-host--dense {
+  height: 320px;
+  min-height: 280px;
+}
+
 .chart-percentile-caption {
   margin: 0 0 8px;
   font-size: 11px;
@@ -597,6 +603,14 @@ select:focus {
 .chart-percentile-caption__note {
   font-size: 10px;
   color: #94a3b8;
+}
+
+.percentile-tax-blurb-line {
+  margin: 0 0 8px;
+}
+
+.percentile-tax-blurb-line:last-child {
+  margin-bottom: 0;
 }
 
 .results-panel {
