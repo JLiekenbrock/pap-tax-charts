@@ -68,17 +68,43 @@ const DEFAULTS: CoreDefaults = {
 }
 
 // MPARA constants / PAP tables (partial)
+const GFB_2021 = 9744 // Lohnsteuer2021.xml MPARA
 const GFB_2025 = 12096 // Grundfreibetrag (GFB) from MPARA for 2025
 const GFB_2026 = 12348 // Grundfreibetrag (GFB) from MPARA for 2026
+/** STKL V–VI withholding progression knots (middle path), 2025/2026. */
 const W1STKL5 = 13785
 const W2STKL5 = 34240
 const W3STKL5 = 222260
 
+const W1STKL5_2021 = 11237
+const W2STKL5_2021 = 28959
+const W3STKL5_2021 = 219690
+
 // KFB: child allowance per child in PAP (2025 uses 9600 per child in MZTABFB when applicable)
 const KFB_PER_CHILD_2025 = 9600
 const KFB_PER_CHILD_2026 = 9756
+
+/** Kinderfreibeträge (EUR/Kind); splits by STKL in 2021 (Lohnsteuer2021.xml MZTABFB). */
+function kfbEuroPerKind(opts: PapOptions): number {
+  const o = { ...DEFAULTS, ...opts }
+  if (o.year === 2026) return KFB_PER_CHILD_2026
+  if (o.year === 2021)
+    return o.stkl === 4 ? 4194 : o.stkl === 5 || o.stkl === 6 ? 0 : 8388
+  return KFB_PER_CHILD_2025 // 2025 + other years fallback
+}
+
+function tableEfaEuro(stkl: number, year: number): number {
+  if (stkl !== 2) return 0
+  if (year === 2021) return 1908
+  return 4260
+}
+const SOLZ_FREE_2021 = 16956 // Lohnsteuer2021.xml MPARA base (then × KZTAB in MSOLZ)
 const SOLZ_FREE_2025 = 19950
 const SOLZ_FREE_2026 = 20350
+
+const BBGRVALV_2021 = 85200 // western scheme (KRV=0); 80400 for KRV=1 omitted in explorer defaults
+const BBGKVPV_2021 = 58050
+const TBSVORV_2021 = 0.84
 
 /**
  * Allgemeine Jahresarbeitsentgeltgrenze (JAEG) — the gross-salary
@@ -91,12 +117,16 @@ const SOLZ_FREE_2026 = 20350
  * insured on 2002-12-31 and is therefore irrelevant for any modern
  * decision the user might explore.
  */
+export const JAEG_2021 = 64_350
 export const JAEG_2025 = 73_800
 export const JAEG_2026 = 77_400
 
 export function jaegFor(year: number, override?: number): number {
   if (typeof override === 'number' && override > 0) return override
-  return year === 2026 ? JAEG_2026 : JAEG_2025
+  if (year === 2026) return JAEG_2026
+  if (year === 2025) return JAEG_2025
+  if (year === 2021) return JAEG_2021
+  return year <= 2021 ? JAEG_2021 : JAEG_2026
 }
 
 /** Upper bound for the explorer’s salary / household RE4 domain (EUR) — aligns with headline DAX‑level packages. */
@@ -115,7 +145,8 @@ export const MAX_CHART_SALARY_EUR = 10_000_000
  */
 function computeWageSoli(base: number, solidarity: boolean, year: number, kztab: number): number {
   if (!solidarity) return 0
-  const solzFreePerHead = year === 2026 ? SOLZ_FREE_2026 : SOLZ_FREE_2025
+  const solzFreePerHead =
+    year === 2026 ? SOLZ_FREE_2026 : year === 2021 ? SOLZ_FREE_2021 : SOLZ_FREE_2025
   const solzFree = solzFreePerHead * kztab
   if (base <= solzFree) return 0
   const standard = base * 0.055
@@ -131,6 +162,8 @@ const AVSATZAN_2026 = 0.013
 const RVSATZAN_2026 = 0.093
 const KVSATZAN_2026 = 0.07
 const PVSATZAN_2026 = 0.018
+const PVSATZAN_AN_2021_REG = 0.01525
+const PVSATZAN_AN_2021_SAX = 0.02025
 
 /** One spouse in a two-earner married PAP household (employee social breakdown only). */
 export type MarriedEarnerSlice = {
@@ -242,20 +275,52 @@ function uptab26(zve: number, kztab = 1): number {
   return st * kztab
 }
 
-/** ZVE / KZTAB floor from which the 45% tariff applies (same knot 2025/2026 in this PAP port). */
-export const REICHEN_TARIFF_X_THRESHOLD = 277_826
+// UPTAB21 from Lohnsteuer2021.xml (Stand 2020-11-03).
+function uptab21(zve: number, kztab = 1): number {
+  const X = Math.floor(zve / kztab)
+  let st = 0
+  const GFB = GFB_2021
+  if (X < GFB + 1) {
+    st = 0
+  } else if (X < 14754) {
+    const Y = Math.trunc(((X - GFB) / 10000) * 1_000_000) / 1_000_000
+    const RW = Y * 995.21 + 1400
+    st = Math.floor(RW * Y)
+  } else if (X < 57919) {
+    const Y = Math.trunc(((X - 14753) / 10000) * 1_000_000) / 1_000_000
+    const RW = Y * 208.85 + 2397
+    st = Math.floor(Y * RW + 950.96)
+  } else if (X < 274613) {
+    st = Math.floor(X * 0.42 - 9136.63)
+  } else {
+    st = Math.floor(X * 0.45 - 17374.99)
+  }
+  return st * kztab
+}
+
+export function tariffOnZVe(zve: number, kztab: number, year: number): number {
+  if (year === 2021) return uptab21(zve, kztab)
+  if (year === 2026) return uptab26(zve, kztab)
+  return uptab25(zve, kztab)
+}
+
+/** ⌊ZVE / KZTAB⌋ from which marginal **45 %** replaces linear **42 %** extrapolation inside UPTAB (year‑specific knot). */
+export function reichenTariffXThresholdForYear(year: number): number {
+  return year === 2021 ? 274_613 : 277_826
+}
+
+/** 2026 knot (EUR); see {@link reichenTariffXThresholdForYear}. */
+export const REICHEN_TARIFF_X_THRESHOLD = reichenTariffXThresholdForYear(2026)
 
 /**
  * Minimum **Zu versteuerndes Einkommen** whose tariff quotient **⌊ZVE / KZTAB⌋** enters the upper block at
- * **`REICHEN_TARIFF_X_THRESHOLD`** (exact floor for marginal **45 %** in our UPTAB port).
+ * the {@link reichenTariffXThresholdForYear}-given knot.
  *
- * - **kztab = 1** → EUR **277 826** taxable income threshold (typically **single** tariff path).
- * - **kztab = 2** → EUR **555 652** threshold on **joint** ZVE (splitting **`KZTAB = 2`**, incl. dual‑earner household chart path).
- *
- * **Gross** RE4 where you first reach this knot depends on Kinder, VSP, PKV/GKV … — use each point’s **`zve`** in the graphs.
+ * - **kztab = 1** → tariff threshold equals the table knot (EUR **274 613** or **277 826** …).
+ * - **kztab = 2** → EUR **≈ 2 × knot** on **joint** ZVE (`KZTAB = 2`).
  */
-export function minZVeFloorForTariffTopBracket(kztab: number): number {
-  return REICHEN_TARIFF_X_THRESHOLD * Math.max(1, kztab)
+export function minZVeFloorForTariffTopBracket(kztab: number, year: number = DEFAULTS.year): number {
+  return reichenTariffXThresholdForYear(year) * Math.max(1, kztab)
 }
 
 /**
@@ -272,30 +337,30 @@ export const TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD = 2 as const
 
 /**
  * Extra UPTAB income tax (EUR) from the 45% top bracket vs extrapolating the linear 42% middle-bracket formula —
- * the usual “Reichensteuer” / Spitzensteuersatz pedagogical slice. Zero below **`REICHEN_TARIFF_X_THRESHOLD`** on **X = ⌊ZVE/kztab⌋**.
+ * the usual “Reichensteuer” / Spitzensteuersatz pedagogical slice. Zero below **`reichenTariffXThresholdForYear(year)`**
+ * on **X = ⌊ZVE/kztab⌋**.
  *
  * Inputs come from **this scenario’s curve** ({@link PapCalculationResult.zve}, {@link PapCalculationResult.kztab}, year knobs).
  *
  * Not “on top of” ZVE: ZVE **is only the tax base**; this amount **sits inside** tariff output **`base`**, partitioning it for charts.
  *
- * Applicable **2025/2026 only** (`0` elsewhere).
+ * Applicable for **modeled tariff years only** ({@link tariffOnZVe}); **`0`** if not implemented.
  */
 export function reichenTariffSurchargeEur(zve: number, kztab: number, year: number): number {
+  const thresh = reichenTariffXThresholdForYear(year)
   const z = Math.max(0, zve)
   const kt = Math.max(1, kztab)
   const X = Math.floor(z / kt)
-  if (X < REICHEN_TARIFF_X_THRESHOLD) return 0
-  if (year === 2026) {
-    const actual = uptab26(z, kt)
-    const hypo = Math.floor(X * 0.42 - 11135.63) * kt
-    return Math.max(0, actual - hypo)
-  }
-  if (year === 2025) {
-    const actual = uptab25(z, kt)
-    const hypo = Math.floor(X * 0.42 - 10911.92) * kt
-    return Math.max(0, actual - hypo)
-  }
-  return 0
+  if (X < thresh) return 0
+  if (year !== 2021 && year !== 2025 && year !== 2026) return 0
+  const actual = tariffOnZVe(z, kt, year)
+  const hypo =
+    year === 2021
+      ? Math.floor(X * 0.42 - 9136.63) * kt
+      : year === 2026
+        ? Math.floor(X * 0.42 - 11135.63) * kt
+        : Math.floor(X * 0.42 - 10911.92) * kt
+  return Math.max(0, actual - hypo)
 }
 
 function reichenPayrollDeltaEur(
@@ -319,9 +384,8 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
   const o = { ...DEFAULTS, ...(opts || {}) }
   const incomeNonNeg = Math.max(0, income)
 
-  // Apply child allowance using PAP KFB per child for 2025 (temporary - full MZTABFB will replace this)
-  const kfb = o.year === 2026 ? KFB_PER_CHILD_2026 : KFB_PER_CHILD_2025
-  const taxable = Math.max(0, incomeNonNeg - (o.children || 0) * kfb)
+  const kfbTot = kfbEuroPerKind(o) * (o.children || 0)
+  const taxable = Math.max(0, incomeNonNeg - kfbTot)
 
   // Splitting (married) handled by computing tax on half the income and doubling
   if (o.filing === 'married') {
@@ -329,10 +393,9 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
     return Math.round(2 * calculatePapTax(half, { ...o, filing: 'single', children: 0 }))
   }
 
-  // Single filer: compute tariff using UPTAB25 when year is 2025 (default)
-  if (o.year === 2025 || o.year === 2026) {
+  if (o.year === 2025 || o.year === 2026 || o.year === 2021) {
     const kztab = o.stkl === 3 ? 2 : 1
-    const base = o.year === 2026 ? uptab26(taxable, kztab) : uptab25(taxable, kztab)
+    const base = tariffOnZVe(taxable, kztab, o.year)
     const solz = computeWageSoli(base, o.solidarity, o.year, kztab)
     const church = Math.round(base * (o.churchRate || 0))
     const payrollTax = base + solz + church
@@ -360,12 +423,8 @@ export function calculatePapTax(income: number, opts?: PapOptions): number {
 
 function computeFixedAllowances(re4: number, opts?: PapOptions) {
   const o = { ...DEFAULTS, ...(opts || {}) }
-  // child allowance: KFB per child (for 2025 use KFB_PER_CHILD_2025)
-  const kfbPerChild = o.year === 2026 ? KFB_PER_CHILD_2026 : KFB_PER_CHILD_2025
-  const kfb = kfbPerChild * (o.children || 0)
-
-  // EFA (Entlastungsbetrag für Alleinerziehende) simplified: apply only for stkl == 2 (married but special)
-  const efa = o.stkl === 2 ? 4260 : 0
+  const kfb = kfbEuroPerKind(o) * (o.children || 0)
+  const efa = tableEfaEuro(o.stkl, o.year)
   const anp = o.stkl && o.stkl < 6 && re4 > 0 ? Math.min(Math.ceil(re4), 1230) : 0
 
   // SAP (Solidaritätsbereinigungs-Pauschbetrag) simplified constant used in PAP excerpts (SAP = 36 for 2025)
@@ -385,9 +444,8 @@ export function computeZTABFB(re4: number, opts?: PapOptions): number {
 
 function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   const o = { ...DEFAULTS, ...(opts || {}) }
-  // Only 2025 and 2026 implement the split RV / KV+PV / AV lines used by charts
-  // (decomposition, Results). Other years keep a coarse placeholder VSP.
-  if (o.year !== 2025 && o.year !== 2026) {
+  // Only 2021/2025/2026 implement the split RV / KV+PV / AV lines used by charts.
+  if (o.year !== 2025 && o.year !== 2026 && o.year !== 2021) {
     const vsp = Math.floor(Math.min(Math.floor(re4 * 0.02), 3000))
     return {
       vsp,
@@ -401,16 +459,28 @@ function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   }
 
   const zre4vp = Math.max(0, re4)
-  const defaultRv = o.year === 2026 ? BBGRVALV_2026 : BBGRVALV_2025
-  const defaultKv = o.year === 2026 ? BBGKVPV_2026 : BBGKVPV_2025
+  const defaultRv =
+    o.year === 2026 ? BBGRVALV_2026 : o.year === 2025 ? BBGRVALV_2025 : BBGRVALV_2021
+  const defaultKv =
+    o.year === 2026 ? BBGKVPV_2026 : o.year === 2025 ? BBGKVPV_2025 : BBGKVPV_2021
   const bbgRvAlv = opts?.bbgRvAlv ?? defaultRv
   const bbgKvPv = opts?.bbgKvPv ?? defaultKv
   const zre4vprRv = Math.min(zre4vp, bbgRvAlv)
-  const vspRenten = o.krv === 1 ? 0 : Math.floor(zre4vprRv * RVSATZAN_2026 * 100) / 100
+  let vspRenten = 0
+  if (o.krv !== 1) {
+    if (o.year === 2021) {
+      const t = Math.floor(zre4vprRv * TBSVORV_2021 * 100) / 100
+      vspRenten = Math.floor(t * RVSATZAN_2026 * 100) / 100
+    } else {
+      vspRenten = Math.floor(zre4vprRv * RVSATZAN_2026 * 100) / 100
+    }
+  }
 
   const zre4vprKvPv = Math.min(zre4vp, bbgKvPv)
-  let pvsatzan = o.pvs === 1 ? 0.023 : PVSATZAN_2026
-  pvsatzan = o.pvz === 1 ? pvsatzan + 0.006 : pvsatzan - o.pva * 0.0025
+  let pvsatzan =
+    o.year === 2021 ? (o.pvs === 1 ? PVSATZAN_AN_2021_SAX : PVSATZAN_AN_2021_REG) : PVSATZAN_2026
+  const pvzBump = o.year === 2021 ? 0.0025 : 0.006
+  pvsatzan = o.pvz === 1 ? pvsatzan + pvzBump : pvsatzan - o.pva * 0.0025
   const kvsatzan = KVSATZAN_2026 + (o.kvz / 2) / 100
 
   let vspKrankenPflege = 0
@@ -429,12 +499,10 @@ function computeVorsorgeDetails(re4: number, opts?: PapOptions) {
   let vsphb = 0
   let vspn = vsp
 
-  // PAP 2025 UPEVP: compare ceil(VSP3+VSP1) with ceil(VSP1+min(12%·ZRE4RV, VHB));
-  // VHB is EUR 3,000 only in Steuerklasse III, else EUR 1,900 (Lohnsteuer2025.xml).
-  // PAP 2026 replaces this with MVSPHB (ALV+KV cap EUR 1,900 for all STKL).
-  const pap2025GkVPath = o.year === 2025 && o.pkv === 0
+  // PAP 2025/2021 UPEVP: compare ceil(VSP3+VSP1) with ceil(VSP1+min(12%·ZRE4RV, VHB)).
+  const papLegacyUpevpPathForGkv = (o.year === 2025 || o.year === 2021) && o.pkv === 0
 
-  if (pap2025GkVPath) {
+  if (papLegacyUpevpPathForGkv) {
     const zFor12 = o.krv === 1 ? zre4vp : zre4vprRv
     const vsp1 = vspRenten
     const vsp2 = Math.min(Math.floor(zFor12 * 0.12 * 100) / 100, o.stkl === 3 ? 3000 : 1900)
@@ -480,11 +548,16 @@ export function calculatePapForMarriedHouseholdTotal(
   return calculateMarriedHouseholdFromIncomes(re4a, re4b, opts)
 }
 
+function gfbForTariffYear(year: number): number {
+  if (year === 2026) return GFB_2026
+  if (year === 2021) return GFB_2021
+  return GFB_2025
+}
+
 function calculateMarriedHouseholdFromIncomes(re4a: number, re4b: number, opts?: PapOptions): PapCalculationResult {
   const o = { ...DEFAULTS, ...(opts || {}) }
-  const kfbPerChild = o.year === 2026 ? KFB_PER_CHILD_2026 : KFB_PER_CHILD_2025
-  const kfb = kfbPerChild * (o.children || 0)
-  const efa = o.stkl === 2 ? 4260 : 0
+  const kfb = kfbEuroPerKind(o) * (o.children || 0)
+  const efa = tableEfaEuro(o.stkl, o.year)
   const anpA = o.stkl && o.stkl < 6 && re4a > 0 ? Math.min(Math.ceil(re4a), 1230) : 0
   const anpB = o.stkl && o.stkl < 6 && re4b > 0 ? Math.min(Math.ceil(re4b), 1230) : 0
   const sap = 36
@@ -498,8 +571,8 @@ function calculateMarriedHouseholdFromIncomes(re4a: number, re4b: number, opts?:
   const zve = Math.max(0, Math.floor(totalRe4 - ztabfb - d1.vsp - d2.vsp))
 
   const kztab = 2
-  const gfb = o.year === 2026 ? GFB_2026 : GFB_2025
-  const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve, kztab)
+  const gfb = gfbForTariffYear(o.year)
+  const base = tariffOnZVe(zve, kztab, o.year)
 
   const wageSolz = computeWageSoli(base, o.solidarity, o.year, kztab)
   const wageChurch = Math.round(base * (o.churchRate || 0))
@@ -596,8 +669,8 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
   const zve = Math.max(0, Math.floor(re4 - ztabfb - vsp))
 
   const kztab = o.filing === 'married' || o.stkl === 3 ? 2 : 1
-  const gfb = o.year === 2026 ? GFB_2026 : GFB_2025
-  const base = o.year === 2026 ? uptab26(zve, kztab) : uptab25(zve, kztab)
+  const gfb = gfbForTariffYear(o.year)
+  const base = tariffOnZVe(zve, kztab, o.year)
 
   const wageSolz = computeWageSoli(base, o.solidarity, o.year, kztab)
   const wageChurch = Math.round(base * (o.churchRate || 0))
@@ -679,17 +752,18 @@ export function paddedChartMaxForReichenZone(minGrossEUR: number, roundingStep =
  * turns positive. Uses the same modelling as charts: **`filing !== 'married'`** → sweep `calculatePapResultFromRE4`; **married**
  * two-earner path → sweep `calculatePapForMarriedHouseholdTotal` with the supplied reference split.
  *
- * Statutory tariff knot **⌊ZVE / KZTAB⌋ ≥ 277 826** is easiest to state for **kztab = 1** (typical Grundtarif / single filing);
- * splitting (**kztab = 2**) moves the surcharge to a substantially higher household ZVE — this function reflects that automatically.
+ * Statutory tariff knot **⌊ZVE / KZTAB⌋ ≥ `reichenTariffXThresholdForYear(year)`** is easiest to state for **kztab = 1**
+ * (typical Grundtarif / single splitting); **`kztab = 2`** moves the surcharge to a substantially higher household ZVE —
+ * this function reflects that automatically.
  *
- * Returns `null` before the surcharge appears below {@link REICHEN_SALARY_SEARCH_CEILING_EUR} or outside 2025/2026 tariff years.
+ * Returns `null` before the surcharge appears below {@link REICHEN_SALARY_SEARCH_CEILING_EUR} or outside **2021/2025/2026** tariff years.
  */
 export function findMinGrossPositiveReichen(
   opts: PapOptions,
   marriedReference?: { income1: number; income2: number },
 ): number | null {
   const o = { ...DEFAULTS, ...opts }
-  if (!(o.year === 2025 || o.year === 2026)) return null
+  if (!(o.year === 2025 || o.year === 2026 || o.year === 2021)) return null
 
   const marriedRefs = (): { income1: number; income2: number } => {
     if (!marriedReference) return { income1: 60_000, income2: 60_000 }

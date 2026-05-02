@@ -296,7 +296,9 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               <input
                 type="number"
                 value={settings.bbgKvPv ?? ''}
-                placeholder={settings.year === 2026 ? '69750' : '66150'}
+                placeholder={
+                  settings.year === 2026 ? '69750' : settings.year === 2021 ? '58050' : '66150'
+                }
                 min={0}
                 step={1000}
                 onChange={(e) => {
@@ -310,7 +312,9 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               <input
                 type="number"
                 value={settings.bbgRvAlv ?? ''}
-                placeholder={settings.year === 2026 ? '101400' : '96600'}
+                placeholder={
+                  settings.year === 2026 ? '101400' : settings.year === 2021 ? '85200' : '96600'
+                }
                 min={0}
                 step={1000}
                 onChange={(e) => {
@@ -324,7 +328,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               <input
                 type="number"
                 value={settings.jaeg ?? ''}
-                placeholder={settings.year === 2026 ? '77400' : '73800'}
+                placeholder={settings.year === 2026 ? '77400' : settings.year === 2021 ? '64350' : '73800'}
                 min={0}
                 step={1000}
                 onChange={(e) => {
@@ -342,8 +346,9 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
         <label>
           Year
           <select value={settings.year} onChange={(e) => update('year', Number(e.target.value) as PapExplorerSettings['year'])}>
-            <option value={2025}>2025</option>
             <option value={2026}>2026</option>
+            <option value={2025}>2025</option>
+            <option value={2021}>2021</option>
           </select>
         </label>
         <label>

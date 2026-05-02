@@ -21,7 +21,7 @@ import {
   minZVeFloorForTariffTopBracket,
   tariffKztabRe4SweepPath,
   TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD,
-  REICHEN_TARIFF_X_THRESHOLD,
+  reichenTariffXThresholdForYear,
   MAX_CHART_SALARY_EUR,
   type MarriedEarnerSlice,
 } from '../lib/pap'
@@ -831,12 +831,13 @@ export default function TaxChart({
 
   const reichenChartNote = React.useMemo(() => {
     const papProbe = toPapOptions(settings)
+    const yr = papProbe.year ?? settings.year
     const kzt =
       settings.filing === 'married' ? TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD : tariffKztabRe4SweepPath(papProbe)
     return {
       kzt,
-      zveAtKnotEur: minZVeFloorForTariffTopBracket(kzt),
-      xKnot: REICHEN_TARIFF_X_THRESHOLD,
+      zveAtKnotEur: minZVeFloorForTariffTopBracket(kzt, yr),
+      xKnot: reichenTariffXThresholdForYear(yr),
     }
   }, [settings])
 
@@ -862,7 +863,8 @@ export default function TaxChart({
         <strong>p99 ≈ EUR {DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024.toLocaleString('de-DE')}</strong>; the salary axis can extend beyond
         that (typically to EUR {settings.rangeMax.toLocaleString('de-DE')} here) so the{' '}
         <strong>45&nbsp;% marginal tariff (often called Reichensteuer)</strong> appears — that extension is <strong>not</strong> any Destatis percentile
-        (“p100”). The computed salary / household RE4 range never exceeds <strong>EUR {MAX_CHART_SALARY_EUR.toLocaleString('de-DE')}</strong> (implementation ceiling).
+        (“p100”).{' '}
+        The automatic chart maximum is additionally <strong>clamped:</strong> it <strong>cannot exceed</strong> EUR {MAX_CHART_SALARY_EUR.toLocaleString('de-DE')} (performance / numerics ceiling); routine scenarios stay far below that limit.
         <br />
         <span className="chart-percentile-caption__note">
           <strong>ZVE vs Reichensteuer:</strong> each point’s ZVE line is the <strong>tax base</strong> (gross minus ZTABFB/VSP …). The plotted
@@ -883,6 +885,59 @@ export default function TaxChart({
           <em className="chart-percentile-caption__note">
             X-axis is household RE4 here; rugs still use the individual FT distribution for reference.
           </em>
+        ) : null}
+        {mode === 'rates' && rateBasis === 'zve' ? (
+          <>
+            <br />
+            <span className="chart-percentile-caption__note">
+              <strong>Rates · Per ZVE:</strong> the <strong>effective burden</strong> line uses payroll tax plus employee social (<strong>cash</strong>)
+              contributions in the numerator, but divides by <strong>ZVE</strong>, which already subtracts deductible VSP. Around the statutory{' '}
+              <strong>contribution ceilings (BBG)</strong>, social euros (and deductible VSP) stop growing much with gross while ZVE can still climb almost
+              euro‑for‑euro — so this <strong>constructed average</strong> can <strong>bend downward</strong> for a spell; the same dip is usually weaker on{' '}
+              <strong>per gross</strong> because each extra gross euro always adds exactly one euro to that denominator.
+              {!vspInRates ? (
+                <>
+                  {' '}
+                  Include <strong>VSP in tax rates</strong> in chart controls when you want the numerator to mirror take-home burdens (otherwise social sits
+                  out of that effective line).
+                </>
+              ) : null}
+            </span>
+            <span className="chart-percentile-caption__formula">
+              <strong>Effective burden % (per ZVE, this app):</strong>{' '}
+              <code>
+                100 × (numerator ÷ denominator)
+              </code>
+              <br />
+              <code>numerator</code> ={' '}
+              {investmentInRates ? (
+                <>
+                  <code>tax</code> (payroll + capital-gains stack)
+                </>
+              ) : (
+                <>
+                  <code>payrollTax</code> (LSt + Soli + KiSt on wages)
+                </>
+              )}
+              {vspInRates ? (
+                <>
+                  {' '}
+                  + <code>vspRenten + vspKrankenPflege + vspArbeitslosen</code>
+                </>
+              ) : (
+                <> (no social in numerator)</>
+              )}
+              <br />
+              <code>denominator</code> = <code>zve</code>
+              {investmentInRates ? (
+                <>
+                  {' '}
+                  + <code>investmentIncome</code>
+                </>
+              ) : null}
+              . Values are taken from each PAP point along the x-axis; points with denominator &lt; 1&nbsp;000 EUR or rate &gt; 100&nbsp;% are omitted.
+            </span>
+          </>
         ) : null}
       </p>
       <div className="tax-chart-canvas-host">

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  JAEG_2021,
   JAEG_2025,
   JAEG_2026,
   REICHEN_TARIFF_X_THRESHOLD,
@@ -8,6 +9,7 @@ import {
   calculatePapTax,
   calculatePapResultFromRE4,
   jaegFor,
+  reichenTariffXThresholdForYear,
 } from './pap'
 import { actualContributions } from './rates'
 
@@ -51,10 +53,36 @@ describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
   })
 })
 
+describe('PAP 2021 tariff (UPTAB21 / MPARA)', () => {
+  const bare = {
+    year: 2021 as const,
+    filing: 'single' as const,
+    solidarity: false,
+    churchRate: 0,
+    children: 0,
+    stkl: 1 as const,
+  }
+
+  it('returns zero withholding below the Grundfreibetrag path', () => {
+    expect(calculatePapTax(9_700, bare)).toBe(0)
+  })
+
+  it('enters positive tax after the tariff-free zone', () => {
+    const r = calculatePapResultFromRE4(35_000, bare)
+    expect(r.gfb).toBe(9744)
+    expect(r.base).toBeGreaterThan(0)
+  })
+
+  it('reports the §32a upper knot lower than later years', () => {
+    expect(reichenTariffXThresholdForYear(2021)).toBe(274_613)
+    expect(reichenTariffXThresholdForYear(2026)).toBeGreaterThan(reichenTariffXThresholdForYear(2021))
+  })
+})
+
 describe('Reichensteuer / 45 % top tariff slice', () => {
   it('has no UPTAB surcharge when ZVE/KZTAB is below the tariff knot', () => {
     const r = calculatePapResultFromRE4(95_000, { year: 2026, solidarity: false, churchRate: 0, stkl: 1, filing: 'single' })
-    expect(Math.floor(r.zve / Math.max(1, r.kztab))).toBeLessThan(REICHEN_TARIFF_X_THRESHOLD)
+    expect(Math.floor(r.zve / Math.max(1, r.kztab))).toBeLessThan(reichenTariffXThresholdForYear(2026))
     expect(r.reichenTariffEur).toBe(0)
     expect(r.reichenPayrollEur).toBe(0)
   })
@@ -210,11 +238,13 @@ describe('Private health insurance (PKV)', () => {
   })
 
   it('exposes the JAEG (Versicherungspflichtgrenze) constants and selector', () => {
+    expect(JAEG_2021).toBe(64_350)
     expect(JAEG_2025).toBe(73_800)
     expect(JAEG_2026).toBe(77_400)
+    expect(jaegFor(2021)).toBe(JAEG_2021)
     expect(jaegFor(2025)).toBe(73_800)
     expect(jaegFor(2026)).toBe(77_400)
-    // 2026 raised the threshold meaningfully (+4.9 % approx).
+    // 2026 raised the threshold meaningfully (+4.9 % approx vs 2025).
     expect(JAEG_2026).toBeGreaterThan(JAEG_2025)
   })
 

@@ -638,6 +638,23 @@ select:focus {
   color: #94a3b8;
 }
 
+.chart-percentile-caption__formula {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.chart-percentile-caption__formula code {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 10px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
 .percentile-tax-blurb-line {
   margin: 0 0 8px;
 }
@@ -1024,6 +1041,76 @@ select:focus {
   background: #f1f5f9;
 }
 
+.glossary-inline-heading {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.glossary-note {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.glossary-table-wrap--scroll {
+  max-width: 100%;
+}
+
+/** Wide MPARA matrix: thead cells need compact numeric columns (overrides glossary term-table `th`). */
+.glossary-table.pap-mpara-years-table thead th {
+  width: auto;
+  min-width: 4rem;
+  max-width: none;
+  vertical-align: bottom;
+  background: #e2e8f0;
+  font-size: 12px;
+  border-right: 1px solid #e2e8f0;
+  white-space: normal;
+}
+
+.glossary-table.pap-mpara-years-table thead th:last-child {
+  border-right: none;
+}
+
+.glossary-table.pap-mpara-years-table tbody th[scope='row'] {
+  width: 8rem;
+  min-width: 8rem;
+  max-width: 11rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.glossary-table.pap-mpara-years-table td,
+.glossary-table.pap-mpara-years-table thead th {
+  vertical-align: top;
+}
+
+.glossary-table.pap-mpara-years-table tbody td:not(.pap-mpara-years-table__kfb) {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pap-mpara-years-table__kfb {
+  min-width: 11rem;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.glossary-mpara-notes {
+  margin: 10px 0 18px;
+  padding-left: 1.2rem;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.glossary-mpara-notes li {
+  margin-bottom: 4px;
+}
+
 .privilege-panel {
   grid-area: privilege;
   margin-top: 0;
@@ -1243,6 +1330,11 @@ select:focus {
   margin: 10px 0 0;
   font-size: 12px;
   color: #713f12;
+}
+
+.privilege-note code {
+  font-size: 11px;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
 }
 
 .privilege-source {

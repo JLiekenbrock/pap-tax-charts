@@ -3,6 +3,7 @@ import { PapCalculationResult } from '../lib/pap'
 import {
   PRIVILEGE_INCOME_SOURCE_LABEL,
   MIN_DESTATIS_LADDER_EVALUATION_GROSS_EUR,
+  DESTATIS_INCOME_TABLE_PUBLICATION_YEAR,
   type PrivilegeComparisonMode,
   type TaxOutcomeBand,
   computePrivilegeSnapshot,
@@ -21,19 +22,19 @@ const verdictCopyIntra: Record<
     title: 'Tax winner',
     className: 'privilege-verdict privilege-verdict--winner',
     blurb:
-      'Your modeled payroll income tax (incl. Soli/church) as a share of salary is lower than the Destatis average assessed income-tax share for others placed in the same income band.',
+      'Your modeled payroll income tax (incl. Soli/church) as a share of salary is lower than the tariff-adjusted Destatis aggregate assessed-income-tax share for the same band (2021 publication cohort, rescaled by a neutral-ladder heuristic toward your PAP tariff year).',
   },
   loser: {
     title: 'Tax loser',
     className: 'privilege-verdict privilege-verdict--loser',
     blurb:
-      'That payroll-income-tax share sits above the Destatis aggregate for the band — so in this crude sense you are “above” typical assessed income tax intensity there.',
+      'That payroll-income-tax share sits above the tariff-adjusted Destatis band aggregate (2021 publication cohort, rescaled toward your selectable PAP tariff via neutral-ladder **2021 vs anchor-year** payroll shares).',
   },
   typical: {
     title: 'Roughly even',
     className: 'privilege-verdict privilege-verdict--typical',
     blurb:
-      'Your payroll tax share is within a couple of points of the Destatis band aggregate.',
+      'Your payroll tax share is within a couple of points of the tariff-adjusted Destatis aggregate for the band.',
   },
 }
 
@@ -78,11 +79,19 @@ export default function PrivilegeCheck({
   const showLadder = !isIntra && snap.socialLadderRows.length > 0
 
   const mainStats = isIntra ? (
-    snap.destatisBracketLabel !== null && snap.bracketPeerAssessedIncomeTaxPct !== null ? (
+    snap.destatisBracketLabel !== null &&
+    snap.bracketPeerAssessedIncomeTaxPct !== null &&
+    snap.bracketPeerAssessedIncomeTaxPctTariffAdjusted !== null ? (
       <p className="privilege-verdict-stats">
-        Your payroll tax on salary: <em>{pct(snap.yourPayrollIncomeTaxPct)}</em> · Band average (Destatis assessed
-        income tax / Einkommen, {snap.destatisIncomeTaxTableYear}, {snap.destatisBracketLabel}):{' '}
-        <em>{pct(snap.bracketPeerAssessedIncomeTaxPct)}</em>
+        Your payroll tax on salary: <em>{pct(snap.yourPayrollIncomeTaxPct)}</em> · Destatis Σ‑tax / Σ‑Einkommen band{' '}
+        {snap.destatisBracketLabel}, publication cohort <strong>{snap.destatisIncomeTaxTableYear}</strong>: raw{' '}
+        <strong>{pct(snap.bracketPeerAssessedIncomeTaxPct)}</strong>; uplift from PAP {DESTATIS_INCOME_TABLE_PUBLICATION_YEAR} toward{' '}
+        <strong>PAP {snap.staleDestatisIncomeTaxAnchorTariffYear}</strong> (mass‑weighted neutral‑ladder payroll÷gross
+        ratio&nbsp;<em>{snap.staleDestatisIncomeTaxUpliftRAnnual.toFixed(3)}</em>, clipped to ×
+        <strong>{snap.staleDestatisIncomeTaxMultiplierApprox.toFixed(2)}</strong>; Δ yr vs baseline tariff{' '}
+        <strong>{snap.staleDestatisIncomeTaxExponentYears}</strong>):{' '}
+        <strong>{pct(snap.bracketPeerAssessedIncomeTaxPctTariffAdjusted)}</strong> — intra‑band verdict uses this uplifted{' '}
+        peer only.
       </p>
     ) : (
       <p className="privilege-verdict-stats">No bracket — enter positive salary to compare.</p>
@@ -101,9 +110,12 @@ export default function PrivilegeCheck({
         household split at each anchor.
       </p>
       <p className="privilege-verdict-stats privilege-verdict-stats--secondary">
-        Same Destatis table, mass-weighted national <strong>assessed income tax / Einkommen only</strong> (publication has{' '}
-        <strong>no</strong> employee social): <em>{pct(snap.destatisMassWeightedAssessedIncomeTaxOnlyPct)}</em> — context
-        only; not comparable to your all-in headline (different tax base and includes SV).
+        Same Destatis table, mass-weighted national <strong>assessed income tax / Einkommen only</strong>: raw cohort{' '}
+        {DESTATIS_INCOME_TABLE_PUBLICATION_YEAR}{' '}
+        <em>{pct(snap.destatisMassWeightedAssessedIncomeTaxOnlyPct)}</em> · uplifted ×
+        {snap.staleDestatisIncomeTaxMultiplierApprox.toFixed(2)} ≈{' '}
+        <em>{pct(snap.destatisMassWeightedAssessedIncomeTaxOnlyPctTariffAdjusted)}</em> — publication has{' '}
+        <strong>no</strong> employee social; not comparable to your all-in headline.
       </p>
     </>
   ) : (
@@ -228,9 +240,12 @@ export default function PrivilegeCheck({
           assessment class.
         </p>
         <p className="privilege-note">
-          <strong>Peer line (within band):</strong> official stat is aggregate assessed income tax divided by aggregate
-          adjusted gross income in that band — not your literal neighbors, but everyone filed in that slice in{' '}
-          {snap.destatisIncomeTaxTableYear}. It does <strong>not</strong> include social-security cash shares.
+          <strong>Peer line (within band):</strong> embedded Destatis Σ assessed income tax ÷ Σ adjusted gross income in that
+          band ({snap.destatisIncomeTaxTableYear} publication slice) — not your literal neighbours. It excludes social cash.
+          The <strong>adjusted</strong> rate rescales that cohort share by the neutral-ladder tariff ratio (mass‑weighted
+          payroll tax ÷ gross at your anchor PAP year vs {' '}
+          <strong>{DESTATIS_INCOME_TABLE_PUBLICATION_YEAR}</strong> — clipped for display — see{' '}
+          <code className="privilege-note-code">neutralLadderStaleDestatisIncomeTaxMultiplier</code> in the source).
         </p>
         <p className="privilege-one-liner">
           <strong>FT benchmarks</strong> ({PRIVILEGE_INCOME_SOURCE_LABEL}; same spline as the wage chart): wage rank{' '}

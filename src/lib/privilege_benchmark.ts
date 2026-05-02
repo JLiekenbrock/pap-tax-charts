@@ -14,6 +14,82 @@ import {
 } from './destatis_income_tax_brackets_2021'
 import type { PapExplorerSettings } from '../components/TaxInput'
 
+/** Publication cohort for embedded Destatis Σ‑Einkommen / Σ‑assessed‑income aggregates. */
+export const DESTATIS_INCOME_TABLE_PUBLICATION_YEAR = 2021
+
+/** Tariff baseline for normalized Destatis income-tax uplift (embedded table cohort year). */
+const NEUTRAL_UP_LIFT_BASELINE_YEAR = 2021 as const
+
+/** PAP tariff years supported for ladder rescaling alongside {@link NEUTRAL_UP_LIFT_BASELINE_YEAR}. */
+export type NeutralLadderTariffYear = typeof NEUTRAL_UP_LIFT_BASELINE_YEAR | 2025 | 2026
+
+function anchorTariffYearForDestatisUplift(year: number): NeutralLadderTariffYear {
+  if (!Number.isFinite(year)) return 2026
+  if (year <= NEUTRAL_UP_LIFT_BASELINE_YEAR) return NEUTRAL_UP_LIFT_BASELINE_YEAR
+  if (year <= 2025) return 2025
+  return 2026
+}
+
+/**
+ * Lift embedded Destatis **assessed-income-tax / Σ‑Einkommen** aggregates from the publication cohort (**2021**)
+ * toward the explorer-selected PAP tariff, using a neutral reference earner (single, STKL I; same ladder anchors as charts):
+ *
+ * `multiplier ≈ clamp( (`mass‑weighted payroll tax ÷ gross` at anchor tariff ) ÷ (`…` at **PAP 2021**), capped )`.
+ *
+ * Intermediate calendar years (**2022–2024**) are **not** modelled → **2025** is used as the uplift anchor whenever
+ * {@link PapExplorerSettings.year} sits in `(2022, 2025]`.
+ *
+ * Applies only to embedded Destatis percentage columns — never scales full PAP model outputs (those already use `explorer.year`).
+ */
+export function neutralLadderStaleDestatisIncomeTaxMultiplier(settings: PapExplorerSettings): {
+  multiplier: number
+  /** Payroll-tax share ratio `pct(anchor year) / pct(2021)` before global multiplier clamp — not a geometric “one-year step”. */
+  rAnnual: number
+  /** Informational tariff-year span `anchor year − publication baseline` — not used inside the multiplication anymore. */
+  yearsExponent: number
+  anchorTariffYear: NeutralLadderTariffYear
+  neutralMassPct2021: number
+  neutralMassPctAnchor: number
+} {
+  const anchorTariffYear = anchorTariffYearForDestatisUplift(settings.year)
+  const pct2021 = massWeightedNeutralPayrollIncomeTaxPct(settings, NEUTRAL_UP_LIFT_BASELINE_YEAR)
+  const pctAnchor = massWeightedNeutralPayrollIncomeTaxPct(settings, anchorTariffYear)
+  const yearsExponent = Math.max(0, anchorTariffYear - NEUTRAL_UP_LIFT_BASELINE_YEAR)
+  const rawR = pct2021 > 1e-9 ? pctAnchor / pct2021 : 1
+  const rAnnual = Number.isFinite(rawR) ? rawR : 1
+  const multiplier = Math.min(1.6, Math.max(1, rAnnual))
+  return {
+    multiplier,
+    rAnnual,
+    yearsExponent,
+    anchorTariffYear,
+    neutralMassPct2021: pct2021,
+    neutralMassPctAnchor: pctAnchor,
+  }
+}
+
+/** Mass‑weighted Σ `payrollTax / salary` across Destatis Σ‑Einkommen weights — neutral ladder earner, given tariff year only. */
+export function massWeightedNeutralPayrollIncomeTaxPct(
+  settings: PapExplorerSettings,
+  tariffYear: NeutralLadderTariffYear,
+): number {
+  const explorer = canonicalWageExplorerForPrivilegeLadder(settings)
+  const ladderOpts = { ...papOptsFromExplorer(explorer, { investmentIncome: 0 }), year: tariffYear }
+  let sumW = 0
+  let sumWP = 0
+  for (const b of DESTATIS_INCOME_TAX_BRACKETS_2021) {
+    const { evaluationGrossEur } = ladderEvaluationGrossForDestatisBracket(b)
+    const r = calculatePapResultFromRE4(evaluationGrossEur, ladderOpts)
+    const w = b.adjustedGrossIncomeMassThousandEur
+    const p = payrollIncomeTaxPercentOnSalary(r)
+    if (w > 0 && Number.isFinite(p)) {
+      sumW += w
+      sumWP += w * p
+    }
+  }
+  return sumW > 0 ? sumWP / sumW : 0
+}
+
 /**
  * - intra: payroll income tax vs Destatis peers in-band
  * - wageSocialBurden: payroll tax + employee social vs mass-weighted anchors across bands
@@ -415,8 +491,10 @@ export type PrivilegeSnapshot = {
   yourTotalBurdenPct: number
   /** Destatis “adjusted gross income” band label (2021 table); gross used as placement proxy. */
   destatisBracketLabel: string | null
-  /** Σ assessed income tax / Σ Einkommen in that Destatis band, 2021. */
+  /** Σ assessed income tax / Σ Einkommen in that Destatis band (publication cohort). */
   bracketPeerAssessedIncomeTaxPct: number | null
+  /** Empirical band peer % uplifted toward modeled tariff cohort (neutral-ladder heuristic; see snapshot fields `stale*`.) */
+  bracketPeerAssessedIncomeTaxPctTariffAdjusted: number | null
   /**
    * Typical employee-social % if everyone sat at their bracket's anchor gross,
    * weighted by Destatis Σ Einkommen mass in each band (model schedule only).
@@ -429,14 +507,26 @@ export type PrivilegeSnapshot = {
    */
   crossBandWeightedWageBurdenRefPct: number | null
   /**
-   * National assessed income tax / Einkommen implied by the same 2021 table (mass-weighted across bands).
+   * National assessed income tax / Einkommen implied by the embedded table (mass-weighted across bands).
    * **No social data** in this publication — for context vs your all-in model burden only.
    */
   destatisMassWeightedAssessedIncomeTaxOnlyPct: number
+  /** Same aggregate × tariff-age heuristic {@link staleDestatisIncomeTaxMultiplierApprox}. */
+  destatisMassWeightedAssessedIncomeTaxOnlyPctTariffAdjusted: number
   socialLadderRows: ReadonlyArray<CrossBandLadderRow>
   /** EUR used to pick the bracket (single: RE4; married: sum RE4). */
   bracketPlacementBasisEur: number
   destatisIncomeTaxTableYear: number
+  /**
+   * Multiplier applied only to embedded Destatis **empirical** income-tax / Einkommen shares —
+   * neutral ladder `payroll tax ÷ gross` at **{@link staleDestatisIncomeTaxAnchorTariffYear} vs PAP 2021**.
+   */
+  staleDestatisIncomeTaxMultiplierApprox: number
+  /** Payroll-tax share ratio at anchor tariff vs Baseline **2021** (numerator / denominator from {@link neutralLadderStaleDestatisIncomeTaxMultiplier}). */
+  staleDestatisIncomeTaxUpliftRAnnual: number
+  /** Informational `anchor year − 2021` tariff span — no longer participates in multiplying the heuristic. */
+  staleDestatisIncomeTaxExponentYears: number
+  staleDestatisIncomeTaxAnchorTariffYear: number
   yourBurdenPctAllIn: number
   hasCapitalIncome: boolean
   marriedHouseholdNote: boolean
@@ -465,6 +555,10 @@ export function computePrivilegeSnapshot(
   const bracketPlacementBasisEur = householdGrossForDestatisBracket(settings)
   const bracketRow = destatisIncomeTaxBracketForApproxEinkommen(bracketPlacementBasisEur)
   const bracketPeerAssessedIncomeTaxPct = bracketRow?.empiricalAssessedIncomeTaxPct ?? null
+  const stale = neutralLadderStaleDestatisIncomeTaxMultiplier(settings)
+  const bracketPeerAssessedIncomeTaxPctTariffAdjusted =
+    bracketPeerAssessedIncomeTaxPct !== null ? bracketPeerAssessedIncomeTaxPct * stale.multiplier : null
+
   const destatisBracketLabel = bracketRow ? formatDestatisBracketLabel(bracketRow) : null
 
   const hasCapitalIncome = (settings.investmentIncome || 0) > 0
@@ -480,10 +574,12 @@ export function computePrivilegeSnapshot(
   const crossBandWeightedSocialRefPct = socialLadderRows.length > 0 ? weightedSocialRefPct : null
   const crossBandWeightedWageBurdenRefPct = socialLadderRows.length > 0 ? weightedWageBurdenRefPct : null
   const destatisMassWeightedAssessedIncomeTaxOnlyPct = destatisTableMassWeightedIncomeTaxOnlyPct()
+  const destatisMassWeightedAssessedIncomeTaxOnlyPctTariffAdjusted =
+    destatisMassWeightedAssessedIncomeTaxOnlyPct * stale.multiplier
 
   const bandIntra =
-    bracketPeerAssessedIncomeTaxPct !== null
-      ? taxOutcomeBandFromBurdens(yourPayrollIncomeTaxPct, bracketPeerAssessedIncomeTaxPct)
+    bracketPeerAssessedIncomeTaxPctTariffAdjusted !== null
+      ? taxOutcomeBandFromBurdens(yourPayrollIncomeTaxPct, bracketPeerAssessedIncomeTaxPctTariffAdjusted)
       : 'typical'
 
   const bandAcross =
@@ -512,12 +608,18 @@ export function computePrivilegeSnapshot(
     yourTotalBurdenPct,
     destatisBracketLabel,
     bracketPeerAssessedIncomeTaxPct,
+    bracketPeerAssessedIncomeTaxPctTariffAdjusted,
     crossBandWeightedSocialRefPct,
     crossBandWeightedWageBurdenRefPct,
     destatisMassWeightedAssessedIncomeTaxOnlyPct,
+    destatisMassWeightedAssessedIncomeTaxOnlyPctTariffAdjusted,
     socialLadderRows,
     bracketPlacementBasisEur,
-    destatisIncomeTaxTableYear: 2021,
+    destatisIncomeTaxTableYear: DESTATIS_INCOME_TABLE_PUBLICATION_YEAR,
+    staleDestatisIncomeTaxMultiplierApprox: stale.multiplier,
+    staleDestatisIncomeTaxUpliftRAnnual: stale.rAnnual,
+    staleDestatisIncomeTaxExponentYears: stale.yearsExponent,
+    staleDestatisIncomeTaxAnchorTariffYear: stale.anchorTariffYear,
     yourBurdenPctAllIn,
     hasCapitalIncome,
     marriedHouseholdNote: settings.filing === 'married',

@@ -33,9 +33,9 @@ declare const process: any
 //
 // PowerShell:  $env:BMF_SKIP='1'; npm test
 //
-// Remote BMF: use `/interface/2025Version1.xhtml` resp. `2026Version1.xhtml` with
-// `code=LSt2026ext` — the path selects PAP 2025 vs 2026. Local LoService matches
-// the bundled jar year only (defaults to 2026 in this suite).
+// Remote BMF only covers **2025** and **2026** (`/interface/2025Version1.xhtml` …).
+// There is no public **2021** Lohnsteuerrechner endpoint; for **UPTAB 2021** vs Java use
+// `pap_java_2021_parity.test.ts` with `PAP_2021_JAR` or `tools/lohnservice/lohnpap-2021.jar`.
 const env = typeof process !== 'undefined' && process.env ? process.env : {}
 const skipExplicit = env.BMF_SKIP === '1'
 const useLocal = env.LOHSERVICE === '1'

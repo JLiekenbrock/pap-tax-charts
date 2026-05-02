@@ -1,15 +1,19 @@
 import java.math.BigDecimal;
 import java.lang.reflect.Method;
+import java.util.Calendar;
+import java.util.Date;
 
 /**
  * Reflection-based CLI wrapper to run the Lohnsteuer jar locally.
- * Usage: java -cp lohnsteuer.jar;. LoService RE4_cents STKL ZKF
- * This avoids compiling against the lohnsteuer.jar at build-time.
+ * Usage: java -cp lohnsteuer.jar;. LoService RE4_cents STKL ZKF [papYear]
+ * Optional {@code papYear} (e.g. 2021) selects {@code Lohnsteuer.getInstance(Date)} on that calendar year
+ * (mid-year), so the multi-year factory returns {@code Lohnsteuer2021} etc. Without it, the JVM’s “today” is used
+ * (often {@code Lohnsteuer2026} only).
  */
 public class LoService {
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
-            System.err.println("Usage: LoService RE4_cents STKL ZKF");
+            System.err.println("Usage: LoService RE4_cents STKL ZKF [papYear]");
             System.exit(2);
         }
         int re4 = Integer.parseInt(args[0]);
@@ -18,8 +22,19 @@ public class LoService {
 
         // load Lohnsteuer class reflectively from the lohnsteuer.jar on the runtime classpath
         Class<?> lohnClass = Class.forName("de.powerproject.lohnpap.pap.Lohnsteuer");
-        Method getInstance = lohnClass.getMethod("getInstance");
-        Object ls = getInstance.invoke(null);
+        Object ls;
+        if (args.length >= 4) {
+            int papYear = Integer.parseInt(args[3]);
+            Calendar cal = Calendar.getInstance();
+            cal.clear();
+            cal.set(papYear, Calendar.JULY, 1, 12, 0, 0);
+            Date d = cal.getTime();
+            Method getInstanceDate = lohnClass.getMethod("getInstance", Date.class);
+            ls = getInstanceDate.invoke(null, d);
+        } else {
+            Method getInstance = lohnClass.getMethod("getInstance");
+            ls = getInstance.invoke(null);
+        }
 
         // locate setter methods
         Method setLzz = ls.getClass().getMethod("setLzz", int.class);

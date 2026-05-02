@@ -3,9 +3,16 @@ import { PapCalculationResult } from '../lib/pap'
 import { actualContributions } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
 
-export type PapChartYear = 2025 | 2026
+export type PapChartYear = 2021 | 2025 | 2026
 
-const PAP_COMPARE_YEARS: PapChartYear[] = [2025, 2026]
+/** Rows in **Compare two years** tariff selectors (chronological order). */
+export const PAP_COMPARE_YEARS: PapChartYear[] = [2021, 2025, 2026]
+
+/** Stable “other column” tariff when avoiding duplicate A/B selections. */
+export function siblingPapChartYear(primary: PapChartYear): PapChartYear {
+  const other = PAP_COMPARE_YEARS.find((y) => y !== primary)
+  return other ?? 2026
+}
 
 function eur(value: number) {
   return `EUR ${Math.round(value).toLocaleString()}`

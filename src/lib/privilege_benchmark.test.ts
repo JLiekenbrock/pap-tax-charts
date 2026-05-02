@@ -16,6 +16,8 @@ import {
   privilegeLadderPapOpts,
   representativeGrossForDestatisBracket,
   payrollTaxPctPercentileVersusDestatisWageSpline,
+  DESTATIS_INCOME_TABLE_PUBLICATION_YEAR,
+  neutralLadderStaleDestatisIncomeTaxMultiplier,
 } from './privilege_benchmark'
 import {
   DESTATIS_INCOME_TAX_BRACKETS_2021,
@@ -107,6 +109,47 @@ describe('taxOutcomeBandFromBurdens', () => {
     expect(taxOutcomeBandFromBurdens(42, 40, 1.5)).toBe('loser')
     expect(taxOutcomeBandFromBurdens(40, 40, 1.5)).toBe('typical')
     expect(taxOutcomeBandFromBurdens(40.5, 40, 1.5)).toBe('typical')
+  })
+})
+
+describe('Destatis tariff-age uplift (neutral ladder)', () => {
+  it('ratio-scales empirical shares from PAP 2021 denominator toward the anchor tariff year', () => {
+    expect(DESTATIS_INCOME_TABLE_PUBLICATION_YEAR).toBe(2021)
+    const s2026: PapExplorerSettings = { ...baseExplorer, year: 2026 }
+    const stal26 = neutralLadderStaleDestatisIncomeTaxMultiplier(s2026)
+    expect(stal26.anchorTariffYear).toBe(2026)
+    expect(stal26.yearsExponent).toBe(2026 - DESTATIS_INCOME_TABLE_PUBLICATION_YEAR)
+    expect(stal26.neutralMassPct2021).toBeGreaterThan(0)
+    expect(stal26.rAnnual).toBeCloseTo(stal26.neutralMassPctAnchor / stal26.neutralMassPct2021, 5)
+    expect(stal26.multiplier).toBeGreaterThanOrEqual(1)
+    expect(stal26.multiplier).toBeLessThanOrEqual(1.6)
+    expect(stal26.multiplier).toBeCloseTo(Math.min(1.6, Math.max(1, stal26.rAnnual)), 5)
+
+    const s2025: PapExplorerSettings = { ...baseExplorer, year: 2025 }
+    const stal25 = neutralLadderStaleDestatisIncomeTaxMultiplier(s2025)
+    expect(stal25.anchorTariffYear).toBe(2025)
+    expect(stal25.yearsExponent).toBe(2025 - DESTATIS_INCOME_TABLE_PUBLICATION_YEAR)
+    expect(stal25.multiplier).toBeGreaterThanOrEqual(stal26.multiplier * 0.4)
+    expect(stal25.multiplier).toBeLessThanOrEqual(stal26.multiplier)
+  })
+
+  it('anchors at 2021 when the explorer year is already the baseline tariff', () => {
+    const s = neutralLadderStaleDestatisIncomeTaxMultiplier({ ...baseExplorer, year: 2021 })
+    expect(s.anchorTariffYear).toBe(2021)
+    expect(s.rAnnual).toBeCloseTo(1, 6)
+    expect(s.multiplier).toBeCloseTo(1, 6)
+  })
+
+  it('intra-band tariff-adjusted peer weakly exceeds raw publication cohort', () => {
+    const s = baseExplorer
+    const r = calculatePapResultFromRE4(s.income, s)
+    const snap = computePrivilegeSnapshot(s, r)
+    expect(snap.bracketPeerAssessedIncomeTaxPct).not.toBeNull()
+    expect(snap.bracketPeerAssessedIncomeTaxPctTariffAdjusted).not.toBeNull()
+    expect(snap.bracketPeerAssessedIncomeTaxPctTariffAdjusted!).toBeGreaterThanOrEqual(snap.bracketPeerAssessedIncomeTaxPct!)
+    expect(snap.destatisMassWeightedAssessedIncomeTaxOnlyPctTariffAdjusted).toBeGreaterThanOrEqual(
+      snap.destatisMassWeightedAssessedIncomeTaxOnlyPct,
+    )
   })
 })
 

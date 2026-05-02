@@ -2,7 +2,7 @@ import React from 'react'
 import TaxInput, { PapExplorerSettings } from './components/TaxInput'
 import TaxChart, { ChartMetric, ChartMode, RateBasis, toPapOptions } from './components/TaxChart'
 import ChartControls from './components/ChartControls'
-import Results, { type PapChartYear } from './components/Results'
+import Results, { type PapChartYear, siblingPapChartYear } from './components/Results'
 import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
 import Glossary from './components/Glossary'
@@ -186,7 +186,7 @@ export default function App() {
     [normalizedSettings, yearCompareEnabled, compareYearA, compareYearB],
   )
 
-  const otherPapYear = React.useCallback((y: PapChartYear): PapChartYear => (y === 2025 ? 2026 : 2025), [])
+  const otherPapYear = React.useCallback((y: PapChartYear): PapChartYear => siblingPapChartYear(y), [])
 
   const onCompareYearAChange = React.useCallback(
     (y: PapChartYear) => {

@@ -1,4 +1,5 @@
 import React from 'react'
+import { PAP_MPARA_TABLE_ROWS, formatEurInt, type PapMparaTableRow } from '../lib/pap_year_constants_reference'
 
 type Entry = { term: string; def: React.ReactNode }
 
@@ -101,6 +102,21 @@ const ENTRIES: ReadonlyArray<Entry> = [
   },
 ]
 
+function mparaCols(r: PapMparaTableRow) {
+  return {
+    meta: `${r.year} (${r.papXmlStand})`,
+    gfb: formatEurInt(r.gfbEUR),
+    kfb: r.kfbSummary,
+    efa: formatEurInt(r.efaStkl2EUR),
+    sap: formatEurInt(r.sapEUR),
+    solz: formatEurInt(r.solzFreigrenzeBasisEUR),
+    bbgRv: formatEurInt(r.bbgrvWestEUR),
+    bbgKv: formatEurInt(r.bbgKvPvEUR),
+    jaeg: formatEurInt(r.jaegEUR),
+    x45: formatEurInt(r.tariffTopBracketXEUR),
+  }
+}
+
 /**
  * Abbreviations and model terms used across charts, results, and PAP code.
  */
@@ -109,6 +125,72 @@ export default function Glossary() {
     <details className="glossary-panel">
       <summary className="glossary-summary">Glossary</summary>
       <div className="glossary-body">
+        <h3 className="glossary-inline-heading">PAP parameters by tariff year</h3>
+        <p className="glossary-note">
+          Values below match the constants wired into{' '}
+          <code>pap.ts</code> / <code>Lohnsteuer2021.xml</code> <strong>MPARA</strong> (and analogous years where we model them).
+          JAEG is for PKV UI hints only — it is <strong>not</strong> an input to tariff <strong>UPTAB</strong> in payroll
+          PAP.
+        </p>
+        <div className="glossary-table-wrap glossary-table-wrap--scroll">
+          <table className="glossary-table pap-mpara-years-table">
+            <thead>
+              <tr>
+                <th scope="col">Tariff&nbsp;year / PAP Stand</th>
+                <th scope="col">GFB</th>
+                <th scope="col">KFB (this app)</th>
+                <th scope="col">
+                  EFA&nbsp;STKL II
+                </th>
+                <th scope="col">SAP</th>
+                <th scope="col">
+                  SOLZ Freigrenze¹
+                </th>
+                <th scope="col">BBG RV²</th>
+                <th scope="col">BBG KV/PV</th>
+                <th scope="col">
+                  JAEG³
+                </th>
+                <th scope="col">
+                  45 % knot ⌊X⌋
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {PAP_MPARA_TABLE_ROWS.map((r) => {
+                const c = mparaCols(r)
+                return (
+                  <tr key={r.year}>
+                    <th scope="row">{c.meta}</th>
+                    <td>{c.gfb}</td>
+                    <td className="pap-mpara-years-table__kfb">{c.kfb}</td>
+                    <td>{c.efa}</td>
+                    <td>{c.sap}</td>
+                    <td>{c.solz}</td>
+                    <td>{c.bbgRv}</td>
+                    <td>{c.bbgKv}</td>
+                    <td>{c.jaeg}</td>
+                    <td>{c.x45}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <ol className="glossary-mpara-notes">
+          <li>
+            <strong>Solidaritätszuschlag:</strong> Freigrenze is multiplied by <strong>KZTAB</strong> inside{' '}
+            <strong>MSOLZ</strong> before comparing to withholding tax bases.
+          </li>
+          <li>
+            <strong>RV BBG:</strong> Western general scheme (<strong>KRV = 0</strong>). A lower east‑scheme cap existed in law
+            for some years — not split in this explorer.
+          </li>
+          <li>
+            <strong>JAEG</strong> = allgemeine Versicherungspflichtgrenze — only drives PKV‑eligibility messaging here.
+          </li>
+        </ol>
+
         <div className="glossary-table-wrap">
           <table className="glossary-table">
             <tbody>
