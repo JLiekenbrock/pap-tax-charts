@@ -111,7 +111,7 @@ export function createIncomePercentileRugsPlugin(opts: IncomePercentileRugOption
       ctx.font = '9px Inter, system-ui, sans-serif'
       ctx.fillStyle = LABEL
       ctx.textBaseline = 'bottom'
-      const labelPts = opts.markers.filter((m) => [10, 50, 90, 95, 99].includes(m.p))
+      const labelPts = opts.markers.filter((m) => [10, 50, 90, 99].includes(m.p))
       let lastX = -1e9
       for (const m of labelPts) {
         const x = xPixelForIncome(chart, m.eur, lo, hi, opts.categoryIncomes, opts.xFromIncomeEur)

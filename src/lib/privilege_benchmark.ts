@@ -1,4 +1,9 @@
-import { PapCalculationResult, PapOptions, calculatePapResultFromRE4 } from './pap'
+import {
+  PapCalculationResult,
+  PapOptions,
+  calculatePapForMarriedHouseholdTotal,
+  calculatePapResultFromRE4,
+} from './pap'
 import { actualContributions } from './rates'
 import {
   DESTATIS_INCOME_TAX_BRACKETS_2021,
@@ -70,25 +75,14 @@ export const DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 =
   DESTATIS_FULLTIME_WAGE_PERCENTILES_2024[DESTATIS_FULLTIME_WAGE_PERCENTILES_2024.length - 1]!.eur
 
 /**
- * Chart rugs only: official markers for p10–p80, then p90–p99 by integer percentiles.
- * EUR for p91–p98 is linearly interpolated between published p90 and p99 (Destatis only publishes deciles
- * up to p90 there). Peer stats still use {@link DESTATIS_FULLTIME_WAGE_PERCENTILES_2024}.
+ * Chart rug positions: **only** percentiles Destatis actually publishes — p10 … p90 (deciles),
+ * plus p99. No interpolated p91–p98 rugs (those EUR levels are not tabulated official points).
+ *
+ * Splines elsewhere ({@link individualIncomePercentileDeStatis}, {@link grossAtDeStatisPercentile}) still interpolate
+ * between these knots for axes and percentile mapping.
  */
 export const DESTATIS_CHART_INCOME_RUG_MARKERS_2024: ReadonlyArray<{ readonly p: number; readonly eur: number }> =
-  (() => {
-    const pts = DESTATIS_FULLTIME_WAGE_PERCENTILES_2024
-    const head = pts.filter((m) => m.p < 90)
-    const p90 = pts.find((m) => m.p === 90)!
-    const p99 = pts.find((m) => m.p === 99)!
-    const tail: { p: number; eur: number }[] = []
-    for (let p = 90; p <= 99; p++) {
-      tail.push({
-        p,
-        eur: Math.round(p90.eur + ((p - p90.p) / (p99.p - p90.p)) * (p99.eur - p90.eur)),
-      })
-    }
-    return [...head, ...tail]
-  })()
+  DESTATIS_FULLTIME_WAGE_PERCENTILES_2024
 
 const DESTATIS_FT_GROSS_ANNUAL_2024 = DESTATIS_FULLTIME_WAGE_PERCENTILES_2024
 
@@ -220,6 +214,47 @@ export function individualIncomePercentileDeStatis(grossAnnual: number): number 
 export function payrollIncomeTaxPercentOnSalary(result: PapCalculationResult): number {
   if (result.income <= 0) return 0
   return (result.payrollTax / result.income) * 100
+}
+
+/** Midrank position (0–100): (# below + ½ × # equal) / n × 100. */
+function percentileRankAmongSamples(samples: readonly number[], value: number): number {
+  const n = samples.length
+  if (n === 0) return 50
+  const eps = 1e-9
+  let less = 0
+  let equal = 0
+  for (const s of samples) {
+    if (s < value - eps) less++
+    else if (Math.abs(s - value) < eps) equal++
+  }
+  return ((less + 0.5 * equal) / n) * 100
+}
+
+/**
+ * Ranks **your** payroll income tax ÷ salary against the **same ratio** modeled at gross levels
+ * `grossAtDeStatisPercentile(1)…grossAtDeStatisPercentile(99)`, with **your** PAP slice (year, filing,
+ * STKL, insurance path, Kinder, capital income, …). Uses the FT wage percentile spline —
+ * Destatis publishes spot percentiles only; intermediate grosses interpolate like income rank.
+ *
+ * Higher = your payroll withholding intensity is heavier than more of those reference grosses under
+ * this scenario (not administrative microdata percentiles).
+ */
+export function payrollTaxPctPercentileVersusDestatisWageSpline(
+  settings: PapExplorerSettings,
+  userResult: PapCalculationResult,
+): number | null {
+  if (userResult.income <= 0) return null
+  const opts = papOptsFromExplorer(settings)
+  const samples: number[] = []
+  for (let p = 1; p <= 99; p++) {
+    const g = Math.max(1, Math.round(grossAtDeStatisPercentile(p)))
+    const r =
+      settings.filing === 'married'
+        ? calculatePapForMarriedHouseholdTotal(g, settings.income1, settings.income2, opts)
+        : calculatePapResultFromRE4(g, opts)
+    samples.push(payrollIncomeTaxPercentOnSalary(r))
+  }
+  return percentileRankAmongSamples(samples, payrollIncomeTaxPercentOnSalary(userResult))
 }
 
 /** Employee RV + health/care + AV cash shares as % of gross salary RE4 (`actualContributions`). */
@@ -358,6 +393,11 @@ export type PrivilegeSnapshot = {
   bandAcrossFull: TaxOutcomeBand
   benchmarkGrossIndividual: number
   incomePercentile: number
+  /**
+   * Where your payroll-tax ÷ salary sits among the same ratios at spline gross `p=1…99`
+   * (same settings); null without salary.
+   */
+  payrollTaxPctPercentileVersusFtWageSpline: number | null
   /** Modeled payroll income tax (incl. Soli/church on wages) / salary RE4. */
   yourPayrollIncomeTaxPct: number
   /** Modeled employee RV + KV/PV + AV / salary RE4 (wage-only slice). */
@@ -449,12 +489,16 @@ export function computePrivilegeSnapshot(
       ? taxOutcomeBandFromBurdens(yourTotalBurdenPct, crossBandWeightedWageBurdenRefPct)
       : 'typical'
 
+  const payrollTaxPctPercentileVersusFtWageSpline =
+    payrollTaxPctPercentileVersusDestatisWageSpline(settings, userResult)
+
   return {
     bandIntra,
     bandAcross,
     bandAcrossFull,
     benchmarkGrossIndividual,
     incomePercentile: individualIncomePercentileDeStatis(benchmarkGrossIndividual),
+    payrollTaxPctPercentileVersusFtWageSpline,
     yourPayrollIncomeTaxPct,
     yourEmployeeSocialPct,
     yourWageBurdenPct,

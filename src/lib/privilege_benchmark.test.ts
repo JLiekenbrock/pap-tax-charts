@@ -15,6 +15,7 @@ import {
   householdGrossForDestatisBracket,
   privilegeLadderPapOpts,
   representativeGrossForDestatisBracket,
+  payrollTaxPctPercentileVersusDestatisWageSpline,
 } from './privilege_benchmark'
 import {
   DESTATIS_INCOME_TAX_BRACKETS_2021,
@@ -73,14 +74,30 @@ describe('Destatis income ladder', () => {
 })
 
 describe('Destatis chart rug markers', () => {
-  it('keeps official deciles below p90 then integer p90–p99 with linear EUR between p91–p98', () => {
-    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.length).toBe(8 + 10)
-    const p90 = DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 90)!
-    const p99 = DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 99)!
-    expect(p90.eur).toBe(97_680)
-    expect(p99.eur).toBe(213_286)
-    const p95 = DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 95)!
-    expect(p95.eur).toBe(Math.round(97_680 + (5 / 9) * (213_286 - 97_680)))
+  it('uses only officially tabulated percentile points (no synthetic p91–p98 rugs)', () => {
+    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.length).toBe(10)
+    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.map((m) => m.p)).toEqual([
+      10, 20, 30, 40, 50, 60, 70, 80, 90, 99,
+    ])
+    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 90)!.eur).toBe(97_680)
+    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 99)!.eur).toBe(213_286)
+    expect(DESTATIS_CHART_INCOME_RUG_MARKERS_2024.find((m) => m.p === 95)).toBeUndefined()
+  })
+})
+
+describe('payrollTaxPctPercentileVersusDestatisWageSpline', () => {
+  it('returns null without wage income', () => {
+    const s: PapExplorerSettings = { ...baseExplorer, income: 0 }
+    const r = calculatePapResultFromRE4(0, s)
+    expect(payrollTaxPctPercentileVersusDestatisWageSpline(s, r)).toBeNull()
+  })
+
+  it('lands near middle of spline at median-ish gross defaults', () => {
+    const s = baseExplorer
+    const r = calculatePapResultFromRE4(s.income, s)
+    const pTax = payrollTaxPctPercentileVersusDestatisWageSpline(s, r)!
+    expect(pTax).toBeGreaterThan(30)
+    expect(pTax).toBeLessThan(70)
   })
 })
 
@@ -116,8 +133,9 @@ describe('computePrivilegeSnapshot (bracket peers)', () => {
     expect(['winner', 'typical', 'loser']).toContain(snap.bandIntra)
     expect(['winner', 'typical', 'loser']).toContain(snap.bandAcross)
     expect(['winner', 'typical', 'loser']).toContain(snap.bandAcrossFull)
-    expect(snap.crossBandWeightedWageBurdenRefPct).not.toBeNull()
-    expect(snap.yourTotalBurdenPct).toBeCloseTo(totalBurdenPercentOnIncome(r), 8)
+    expect(snap.payrollTaxPctPercentileVersusFtWageSpline).not.toBeNull()
+    expect(snap.payrollTaxPctPercentileVersusFtWageSpline!).toBeGreaterThanOrEqual(0)
+    expect(snap.payrollTaxPctPercentileVersusFtWageSpline!).toBeLessThanOrEqual(100)
   })
 })
 

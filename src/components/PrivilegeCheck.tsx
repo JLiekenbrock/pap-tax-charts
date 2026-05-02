@@ -233,8 +233,20 @@ export default function PrivilegeCheck({
           {snap.destatisIncomeTaxTableYear}. It does <strong>not</strong> include social-security cash shares.
         </p>
         <p className="privilege-one-liner">
-          Your gross vs full-time peers (Verdienst): <em>{pct(snap.incomePercentile)}</em> percentile (
-          {PRIVILEGE_INCOME_SOURCE_LABEL}).
+          <strong>FT benchmarks</strong> ({PRIVILEGE_INCOME_SOURCE_LABEL}; same spline as the wage chart): wage rank{' '}
+          <strong>p{snap.incomePercentile.toFixed(1)}</strong> · payroll-tax-on-salary rank{' '}
+          <strong>
+            {snap.payrollTaxPctPercentileVersusFtWageSpline !== null
+              ? `p${snap.payrollTaxPctPercentileVersusFtWageSpline.toFixed(1)}`
+              : '—'}
+          </strong>
+          .
+        </p>
+        <p className="privilege-note">
+          <strong>Tax rank</strong> is not from Destatis tax microdata — we rerun PAP at gross levels matched to wage
+          percentiles p1–p99 (interpolated between published Destatis breakpoints), holding <strong>your</strong>{' '}
+          settings fixed, compare your payroll tax ÷ salary to those ninety-nine modeled ratios with a midrank. Higher{' '}
+          <strong>p</strong> ⇒ heavier withholding vs that synthetic ladder.
         </p>
         {snap.hasCapitalIncome ? (
           <p className="privilege-note">

@@ -211,7 +211,8 @@ select:focus {
     "controls controls"
     "chart    results"
     "privilege privilege"
-    "tips     tips";
+    "tips     tips"
+    "glossary glossary";
   gap: 18px;
   align-items: start;
 }
@@ -644,7 +645,8 @@ select:focus {
       "chart"
       "results"
       "privilege"
-      "tips";
+      "tips"
+      "glossary";
   }
 
   .app-header {
@@ -792,6 +794,7 @@ select:focus {
 }
 
 .glossary-panel {
+  grid-area: glossary;
   margin-top: 14px;
   padding: 12px 14px;
   background: #f8fafc;
@@ -861,9 +864,9 @@ select:focus {
 }
 
 .glossary-table th {
-  width: 30%;
-  min-width: 7.5rem;
-  max-width: 14rem;
+  width: 22%;
+  min-width: 8rem;
+  max-width: 12rem;
   font-weight: 600;
   color: #0f172a;
   background: #f1f5f9;

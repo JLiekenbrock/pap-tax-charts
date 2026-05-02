@@ -773,9 +773,9 @@ export default function TaxChart({
         </p>
       ) : null}
       <p className="chart-percentile-caption">
-        Rug ticks: {PRIVILEGE_INCOME_SOURCE_LABEL} — p10 … p80, then each integer p90–p99 (EUR for p91–p98 linear between
-        published p90/p99). RE4 axis runs to EUR {DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024.toLocaleString()} (Destatis
-        top published percentile, used as p100 chart cap).
+        Rug ticks: {PRIVILEGE_INCOME_SOURCE_LABEL} — only published cutoffs (p10–p90 deciles and p99; no interpolated p91–p98).
+        RE4 axis runs to EUR {DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024.toLocaleString()} (Destatis highest published
+        percentile, chart cap).
         {percentileScaleXActive ? (
           <> Rugs align vertically with the percentile grid.</>
         ) : null}{' '}
