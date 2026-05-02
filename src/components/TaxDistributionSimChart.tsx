@@ -132,6 +132,8 @@ function buildSimCfg(
     household: HouseholdSamplingUi
     mzStrat: boolean
     equivBridge: boolean
+    vspInRates: boolean
+    investmentInRates: boolean
   },
 ): TaxBurdenSimConfig {
   const y = explorer.year === 2025 ? 2025 : 2026
@@ -157,6 +159,8 @@ function buildSimCfg(
     primaryBruttoSampling,
     ...mzLayer,
     maxChildrenSim: DEMOGRAPHIC_SIM_PRESETS_DEFAULT.maxChildrenSim,
+    includeVspInBurdenPct: opts.vspInRates,
+    investmentInBurdenNumerator: opts.investmentInRates,
     basePap: basePapFromExplorer(explorer),
   }
 }
@@ -167,6 +171,8 @@ function buildSyntheticHouseholdIncomeCurveCfg(
   rngSeed: number,
   sketch: NonNullable<TaxBurdenSimConfig['fixedHouseholdSketch']>,
   insurance: 'gkv' | 'pkv_demo',
+  vspInRates: boolean,
+  investmentInRates: boolean,
 ): TaxBurdenSimConfig {
   const y = explorer.year === 2025 ? 2025 : 2026
   const base = basePapFromExplorer(explorer)
@@ -189,6 +195,8 @@ function buildSyntheticHouseholdIncomeCurveCfg(
     primaryBruttoSampling: undefined,
     fixedHouseholdSketch: sketch,
     maxChildrenSim: DEMOGRAPHIC_SIM_PRESETS_DEFAULT.maxChildrenSim,
+    includeVspInBurdenPct: vspInRates,
+    investmentInBurdenNumerator: investmentInRates,
     basePap: basePapMerged,
   }
 }
@@ -224,6 +232,38 @@ const HOUSEHOLD_INSURANCE_SCENARIO_LINES = [
     color: '#b45309',
     rngSlot: 3,
     sketch: { filing: 'married' as const, children: 2 },
+    insurance: 'gkv' as const,
+    curveIncomeFloorEur: 22_000,
+  },
+  {
+    label: 'Verheiratet · nur ein Partner erwerbstätig · keine Kinder · GKV',
+    color: '#166534',
+    rngSlot: 10,
+    sketch: { filing: 'married' as const, children: 0, marriedDualEarner: false },
+    insurance: 'gkv' as const,
+    curveIncomeFloorEur: 22_000,
+  },
+  {
+    label: 'Verheiratet · nur ein Partner erwerbstätig · 1 Kind · GKV',
+    color: '#ca8a04',
+    rngSlot: 11,
+    sketch: { filing: 'married' as const, children: 1, marriedDualEarner: false },
+    insurance: 'gkv' as const,
+    curveIncomeFloorEur: 22_000,
+  },
+  {
+    label: 'Verheiratet · nur ein Partner erwerbstätig · 2 Kinder · GKV',
+    color: '#0369a1',
+    rngSlot: 12,
+    sketch: { filing: 'married' as const, children: 2, marriedDualEarner: false },
+    insurance: 'gkv' as const,
+    curveIncomeFloorEur: 22_000,
+  },
+  {
+    label: 'Verheiratet · nur ein Partner erwerbstätig · 3 Kinder · GKV',
+    color: '#7e22ce',
+    rngSlot: 13,
+    sketch: { filing: 'married' as const, children: 3, marriedDualEarner: false },
     insurance: 'gkv' as const,
     curveIncomeFloorEur: 22_000,
   },
@@ -296,7 +336,21 @@ function trimHistogramBinsToMass(
   return bins.slice(first, last + 1)
 }
 
-export default function TaxDistributionSimChart({ explorer }: { explorer: PapExplorerSettings }) {
+function scenarioBurdenYAxisTitle(includeVsp: boolean, investmentsInNumerator: boolean): string {
+  const taxPart = investmentsInNumerator ? 'total tax' : 'payroll tax'
+  const numerator = includeVsp ? `${taxPart} + employee SSC` : taxPart
+  return `${numerator} (% of modeled total income)`
+}
+
+export default function TaxDistributionSimChart({
+  explorer,
+  vspInRates,
+  investmentInRates,
+}: {
+  explorer: PapExplorerSettings
+  vspInRates: boolean
+  investmentInRates: boolean
+}) {
   const [household, setHousehold] = React.useState<HouseholdSamplingUi>('destatis_typ1')
   const [equivBridge, setEquivBridge] = React.useState(false)
   const [mzStrat, setMzStrat] = React.useState(true)
@@ -311,8 +365,10 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
         household,
         mzStrat,
         equivBridge,
+        vspInRates,
+        investmentInRates,
       }),
-    [explorer, sampleSize, rngSeed, household, mzStrat, equivBridge],
+    [explorer, sampleSize, rngSeed, household, mzStrat, equivBridge, vspInRates, investmentInRates],
   )
 
   const result = React.useMemo(() => simulateTaxBurdenDistribution(cfg), [cfg])
@@ -356,6 +412,8 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
           rngSeed + spec.rngSlot * 131_071,
           spec.sketch,
           spec.insurance,
+          vspInRates,
+          investmentInRates,
         )
         const sim = simulateTaxBurdenDistribution(cfgLine)
         const pts = incomeBurdenQuantileCurve(
@@ -379,9 +437,12 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
         }
       }),
     }
-  }, [explorer, sampleSize, rngSeed])
+  }, [explorer, sampleSize, rngSeed, vspInRates, investmentInRates])
 
   const s = result.summary
+
+  const burdenAxisCaption = scenarioBurdenYAxisTitle(vspInRates, investmentInRates)
+
   const options = React.useMemo(
     () => ({
       responsive: true,
@@ -402,7 +463,7 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
       },
       scales: {
         x: {
-          title: { display: true, text: '(Tax + employer social share) ÷ modeled total income × 100' },
+          title: { display: true, text: `Burden buckets (${burdenAxisCaption})` },
           grid: { display: false },
           ticks: { maxRotation: 55, minRotation: 0, font: { size: 10 } },
         },
@@ -413,7 +474,7 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
         },
       },
     }),
-    [chartBins],
+    [chartBins, burdenAxisCaption],
   )
 
   const scenarioIncomeLineOptions = React.useMemo(
@@ -451,7 +512,7 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
           min: 0,
           title: {
             display: true,
-            text: 'Tax + employee SSC burden (% of modeled total income)',
+            text: burdenAxisCaption,
           },
           grid: { color: '#eef2f6' },
           ticks: {
@@ -460,10 +521,10 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
         },
       },
     }),
-    [],
+    [burdenAxisCaption],
   )
 
-  const key = `${household}-${equivBridge}-${mzStrat}-${sampleSize}-${rngSeed}-${explorer.year}`
+  const key = `${household}-${equivBridge}-${mzStrat}-${sampleSize}-${rngSeed}-${explorer.year}-${vspInRates}-${investmentInRates}`
 
   const hsCaption =
     household === 'destatis_typ1'
@@ -477,8 +538,10 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
       </summary>
       <div className="tax-dist-sim-details-body">
         <p className="chart-percentile-caption chart-percentile-caption--muted">
-          Monte Carlo draws from <code>tax_distribution_sim.ts</code> (FT wage spline ± household priors).
-          Vertical axis counts only <strong>(income tax + modeled employee payroll tax + VSP + Pflege + …) / total income × 100</strong> — aligned with explorer insurance toggles shown above — not Staatsrechnungs‑Soli/Kirchen split rules.
+          Monte Carlo draws from <code>tax_distribution_sim.ts</code> (FT wage spline ± household priors). Each simulated
+          burden % uses <strong>{burdenAxisCaption}</strong>, matching Chart controls{' '}
+          <strong>Rates → VSP in rates</strong> and <strong>Investments</strong> (same numerator choices as the main tax chart); SSC
+          magnitudes still follow the insurance sliders above — not Staatsrechnungs‑Soli/Kirchen split rules.
         </p>
         <div className="tax-dist-sim-controls two-col">
         <label className="tax-dist-sim-label">
@@ -551,8 +614,11 @@ export default function TaxDistributionSimChart({ explorer }: { explorer: PapExp
         Each line is an independent Monte Carlo on the FT‑brutto percentile spline plus default decile sociology priors
         (same global <code>pMarried</code> / Zweiverdiener anteilig as the wage‑decile path), while{' '}
         <strong>Kinderzahl / Veranlagungsform</strong> and <strong>GKV vs illustrative PKV</strong> are held fixed via{' '}
-        <code>fixedHouseholdSketch</code> and forced <code>pkv</code> tiers (PKV uses explorer premiums if higher than the
-        €600 / Mo + €300 AG‑Zuschuss defaults). PKV overlays drop draws whose modeled yearly total&nbsp;€ stays below&nbsp;
+        <code>fixedHouseholdSketch</code> (<strong>e.g.</strong>{' '}
+        <strong>nur ein Partner erwerbstätig</strong> lines pin <code>marriedDualEarner: false</code>) and forced{' '}
+        <code>pkv</code> tiers (PKV uses explorer premiums if higher than the
+        €600 / Mo + €300 AG‑Zuschuss defaults). Burden % numerator uses the{' '}
+        <strong>same Rates (VSP / investments) slices as above</strong>. PKV overlays drop draws whose modeled yearly total&nbsp;€ stays below&nbsp;
         <strong>38 k€</strong> so fixed annual premiums do not inflate % arbitrarily; GKV overlays use&nbsp;
         <strong>22 k€</strong>.
         Bands pool the remainder into&nbsp;

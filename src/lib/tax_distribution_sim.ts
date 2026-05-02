@@ -191,6 +191,18 @@ export type TaxBurdenSimConfig = Readonly<{
     children: number
     marriedDualEarner?: boolean
   }>
+  /**
+   * Include employee SSC ({@link actualContributions}) in the burden numerator. When false,
+   * matches TaxChart lines with **VSP in rates** off (effective **tax‑only** on total income basis).
+   * Default true — historic simulation behaviour.
+   */
+  includeVspInBurdenPct?: boolean
+  /**
+   * Use full `{@link PapCalculationResult.tax}` vs payroll slice `{@link PapCalculationResult.payrollTax}` only
+   * in that numerator — same choice as explorer **Investments in burden** toggles alongside VSP above.
+   * Default true.
+   */
+  investmentInBurdenNumerator?: boolean
   basePap: Omit<PapOptions, 'filing' | 'children' | 'stkl' | 'partnerRe4'>
 }>
 
@@ -539,10 +551,14 @@ function marryIncomesDualEarnerIfSampled(
   return { income1, income2 }
 }
 
-function totalBurdenPct(r: PapCalculationResult): number {
+function totalBurdenPct(r: PapCalculationResult, burden: Pick<TaxBurdenSimConfig, 'includeVspInBurdenPct' | 'investmentInBurdenNumerator'>): number {
   const denom = r.totalIncome
   if (!(denom > 0)) return 0
-  return ((r.tax + actualContributions(r)) / denom) * 100
+  const includeVsp = burden.includeVspInBurdenPct !== false
+  const investNum = burden.investmentInBurdenNumerator !== false
+  const taxPart = investNum ? r.tax : r.payrollTax
+  const numer = includeVsp ? taxPart + actualContributions(r) : taxPart
+  return (numer / denom) * 100
 }
 
 function payrollTaxPctOnSalary(r: PapCalculationResult): number {
@@ -603,7 +619,7 @@ function drawSingleTaxBurdenSimDestatisTyp1(cfg: TaxBurdenSimConfig, rng: () => 
       income1: gross,
       income2: 0,
       totalGrossAnnual: gross,
-      totalBurdenPct: totalBurdenPct(r),
+      totalBurdenPct: totalBurdenPct(r, cfg),
       payrollTaxPctOnSalary: payrollTaxPctOnSalary(r),
     }
   }
@@ -643,7 +659,7 @@ function drawSingleTaxBurdenSimDestatisTyp1(cfg: TaxBurdenSimConfig, rng: () => 
       income1: gross,
       income2: 0,
       totalGrossAnnual: gross,
-      totalBurdenPct: totalBurdenPct(r),
+      totalBurdenPct: totalBurdenPct(r, cfg),
       payrollTaxPctOnSalary: payrollTaxPctOnSalary(r),
     }
   }
@@ -699,7 +715,7 @@ function drawSingleTaxBurdenSimDestatisTyp1(cfg: TaxBurdenSimConfig, rng: () => 
     income1,
     income2,
     totalGrossAnnual: totalGross,
-    totalBurdenPct: totalBurdenPct(r),
+    totalBurdenPct: totalBurdenPct(r, cfg),
     payrollTaxPctOnSalary: payrollTaxPctOnSalary(r),
   }
 }
@@ -752,7 +768,7 @@ export function drawSingleTaxBurdenSim(cfg: TaxBurdenSimConfig, rng: () => numbe
       income1: gross,
       income2: 0,
       totalGrossAnnual: gross,
-      totalBurdenPct: totalBurdenPct(r),
+      totalBurdenPct: totalBurdenPct(r, cfg),
       payrollTaxPctOnSalary: payrollTaxPctOnSalary(r),
     }
   }
@@ -796,7 +812,7 @@ export function drawSingleTaxBurdenSim(cfg: TaxBurdenSimConfig, rng: () => numbe
     income1,
     income2,
     totalGrossAnnual: totalGross,
-    totalBurdenPct: totalBurdenPct(r),
+    totalBurdenPct: totalBurdenPct(r, cfg),
     payrollTaxPctOnSalary: payrollTaxPctOnSalary(r),
   }
 }

@@ -314,7 +314,11 @@ export default function App() {
             resultCompareA={resultCompareA}
             resultCompareB={resultCompareB}
           />
-          <TaxDistributionSimChart explorer={normalizedSettings} />
+          <TaxDistributionSimChart
+            explorer={normalizedSettings}
+            vspInRates={vspInRates}
+            investmentInRates={investmentInRates}
+          />
           <PrivilegeCheck result={current} settings={normalizedSettings} />
           <PercentileTaxContributionChart explorer={normalizedSettings} />
           <TaxTips
