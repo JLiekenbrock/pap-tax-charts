@@ -178,8 +178,9 @@ describe('marginalDecomposition', () => {
     const total = marginalTaxRate(50_000, baseOptions, 'gross', { includeVspInRate: true })
     const parts = marginalDecomposition(50_000, baseOptions, 'gross')
     expect(parts.total).toBeCloseTo(total, 6)
-    expect(parts.incomeTax + parts.soli + parts.church + parts.pension + parts.healthCare + parts.unemployment)
-      .toBeCloseTo(total, 6)
+    expect(
+      parts.incomeTax + parts.reichenTariff + parts.soli + parts.church + parts.pension + parts.healthCare + parts.unemployment,
+    ).toBeCloseTo(total, 6)
   })
 
   it('components sum to the burden marginal rate (zve basis)', () => {
@@ -191,7 +192,7 @@ describe('marginalDecomposition', () => {
   it('is invariant to investmentIncome (capital-gains pieces cancel in Δ)', () => {
     const a = marginalDecomposition(60_000, { ...baseOptions, investmentIncome: 0 }, 'gross')
     const b = marginalDecomposition(60_000, { ...baseOptions, investmentIncome: 50_000 }, 'gross')
-    for (const key of ['incomeTax', 'soli', 'church', 'pension', 'healthCare', 'unemployment', 'total'] as const) {
+    for (const key of ['incomeTax', 'reichenTariff', 'incomeTaxRaw', 'soli', 'church', 'pension', 'healthCare', 'unemployment', 'total'] as const) {
       expect(b[key]).toBeCloseTo(a[key], 6)
     }
   })
@@ -245,15 +246,17 @@ describe('marginalDecomposition', () => {
     const m = marginalDecomposition(0, baseOptions, 'zve')
     expect(m.total).toBe(0)
     expect(m.incomeTax).toBe(0)
+    expect(m.reichenTariff).toBe(0)
     expect(m.pension).toBe(0)
   })
 
-  it('income tax component matches manual baseTax finite difference', () => {
+  it('income tax + Reichensteuer matches raw marginal UPTAB finite difference', () => {
     const income = 50_000
     const lower = calculatePapResultFromRE4(income - 500, baseOptions)
     const upper = calculatePapResultFromRE4(income + 500, baseOptions)
-    const expected = ((upper.baseTax - lower.baseTax) / 1_000) * 100
+    const expectedRaw = ((upper.baseTax - lower.baseTax) / 1_000) * 100
     const m = marginalDecomposition(income, baseOptions, 'gross')
-    expect(m.incomeTax).toBeCloseTo(expected, 6)
+    expect(m.incomeTaxRaw).toBeCloseTo(expectedRaw, 6)
+    expect(m.incomeTax + m.reichenTariff).toBeCloseTo(m.incomeTaxRaw, 6)
   })
 })

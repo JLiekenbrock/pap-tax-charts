@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   JAEG_2025,
   JAEG_2026,
+  REICHEN_TARIFF_X_THRESHOLD,
+  findMinGrossPositiveReichen,
   calculatePapForMarriedHouseholdTotal,
   calculatePapTax,
   calculatePapResultFromRE4,
@@ -46,6 +48,57 @@ describe('PAP 2025 tariff (UPTAB25) basic checks', () => {
     })
     expect(r.vspRenten).toBeGreaterThan(0)
     expect(r.vspArbeitslosen).toBeGreaterThan(0)
+  })
+})
+
+describe('Reichensteuer / 45 % top tariff slice', () => {
+  it('has no UPTAB surcharge when ZVE/KZTAB is below the tariff knot', () => {
+    const r = calculatePapResultFromRE4(95_000, { year: 2026, solidarity: false, churchRate: 0, stkl: 1, filing: 'single' })
+    expect(Math.floor(r.zve / Math.max(1, r.kztab))).toBeLessThan(REICHEN_TARIFF_X_THRESHOLD)
+    expect(r.reichenTariffEur).toBe(0)
+    expect(r.reichenPayrollEur).toBe(0)
+  })
+
+  it('allocates tariff and payroll deltas at very high income', () => {
+    const r = calculatePapResultFromRE4(500_000, { year: 2026, solidarity: true, churchRate: 0, filing: 'single' })
+    expect(r.reichenTariffEur).toBeGreaterThan(5000)
+    expect(r.reichenPayrollEur).toBeGreaterThanOrEqual(r.reichenTariffEur)
+    expect(r.payrollTax - r.reichenPayrollEur + r.reichenPayrollEur).toBe(r.payrollTax)
+  })
+
+  it('findMinGrossPositiveReichen reports gross clearly above nominal wage p99 tail', () => {
+    const minRe = findMinGrossPositiveReichen({
+      year: 2026,
+      filing: 'single',
+      stkl: 1,
+      children: 0,
+      solidarity: false,
+      churchRate: 0,
+    })!
+    expect(minRe).toBeGreaterThan(213_286) // Destatis FT p99 2024 (wage ladder) — tariff tail is unrelated
+    const at = calculatePapResultFromRE4(minRe, {
+      year: 2026,
+      filing: 'single',
+      stkl: 1,
+      solidarity: false,
+      churchRate: 0,
+    })
+    expect(at.reichenTariffEur).toBeGreaterThan(0)
+    const below = calculatePapResultFromRE4(Math.max(0, minRe - 750), {
+      year: 2026,
+      filing: 'single',
+      stkl: 1,
+      solidarity: false,
+      churchRate: 0,
+    })
+    expect(below.reichenTariffEur).toBe(0)
+  })
+
+  it('moves the gross onset with scenario (children raise ZTABFB → higher gross needed to reach the same tariff knot)', () => {
+    const base = { year: 2026 as const, filing: 'single' as const, stkl: 1 as const, solidarity: false, churchRate: 0 }
+    const noKids = findMinGrossPositiveReichen({ ...base, children: 0 })!
+    const withKids = findMinGrossPositiveReichen({ ...base, children: 2 })!
+    expect(withKids).toBeGreaterThan(noKids)
   })
 })
 

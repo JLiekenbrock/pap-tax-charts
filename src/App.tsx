@@ -8,15 +8,46 @@ import TaxTips from './components/TaxTips'
 import Glossary from './components/Glossary'
 import TaxDistributionSimChart from './components/TaxDistributionSimChart'
 import PercentileTaxContributionChart from './components/PercentileTaxContributionChart'
-import { PapCalculationResult, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4 } from './lib/pap'
+import {
+  PapCalculationResult,
+  calculatePapForMarriedHouseholdTotal,
+  calculatePapResultFromRE4,
+  findMinGrossPositiveReichen,
+  MAX_CHART_SALARY_EUR,
+  paddedChartMaxForReichenZone,
+} from './lib/pap'
 import { deriveStkl } from './lib/stkl'
-import { DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 } from './lib/privilege_benchmark'
+import { DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024 } from './lib/privilege_benchmark'
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-const SERIES_POINTS = 180
+
+
+const SERIES_POINTS_MIN = 180
+const SERIES_POINTS_MAX = 500
+
+function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
+  const min = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
+  const max = Math.max(min, settings.rangeMax)
+  const effMin = min
+  const span = max - effMin
+  const pointCount =
+    span <= 0
+      ? 1
+      : Math.min(SERIES_POINTS_MAX, Math.max(SERIES_POINTS_MIN, Math.ceil(span / 20_000)))
+  const step = pointCount <= 1 ? 0 : span / (pointCount - 1)
+  const opts = toPapOptions(settings)
+
+  return Array.from({ length: pointCount }, (_, index) => {
+    const income = pointCount <= 1 ? effMin : Math.round(effMin + step * index)
+    if (settings.filing === 'married') {
+      return calculatePapForMarriedHouseholdTotal(income, settings.income1, settings.income2, opts)
+    }
+    return calculatePapResultFromRE4(income, opts)
+  })
+}
 
 function papSnapshotAtIncome(settings: PapExplorerSettings, year: number): PapCalculationResult {
   const opts = toPapOptions({ ...settings, year })
@@ -27,22 +58,6 @@ function papSnapshotAtIncome(settings: PapExplorerSettings, year: number): PapCa
     })
   }
   return calculatePapResultFromRE4(settings.income, opts)
-}
-
-function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
-  const min = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
-  const max = Math.max(min, settings.rangeMax)
-  const effMin = min
-  const step = (max - effMin) / (SERIES_POINTS - 1)
-  const opts = toPapOptions(settings)
-
-  return Array.from({ length: SERIES_POINTS }, (_, index) => {
-    const income = Math.round(effMin + step * index)
-    if (settings.filing === 'married') {
-      return calculatePapForMarriedHouseholdTotal(income, settings.income1, settings.income2, opts)
-    }
-    return calculatePapResultFromRE4(income, opts)
-  })
 }
 
 const DEFAULT_SETTINGS: PapExplorerSettings = {
@@ -75,7 +90,7 @@ const DEFAULT_SETTINGS: PapExplorerSettings = {
 
 export default function App() {
   const [settings, setSettings] = React.useState<PapExplorerSettings>(DEFAULT_SETTINGS)
-  const [metrics, setMetrics] = React.useState<ChartMetric[]>(['tax', 'zve', 'vsp'])
+  const [metrics, setMetrics] = React.useState<ChartMetric[]>(['tax', 'zve', 'vsp', 'reichenPayroll'])
   const [chartMode, setChartMode] = React.useState<ChartMode>('lines')
   const [rateBasis, setRateBasis] = React.useState<RateBasis>('gross')
   const [vspInRates, setVspInRates] = React.useState(true)
@@ -105,7 +120,22 @@ export default function App() {
     const highestIncome = Math.max(filingIncome, income1 + income2, 10000)
     const rangeMin = 0
     const rangeMaxBase = Math.max(30000, Math.ceil((highestIncome * 1.5 + 10000) / 1000) * 1000)
-    const rangeMax = Math.max(rangeMaxBase, DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024)
+    const papOptsPreRange = toPapOptions({
+      ...settings,
+      stkl: stklDerivation.stkl,
+      investmentIncome: Math.max(0, settings.investmentIncome),
+      kindergeldChildren: Math.max(0, Math.floor(settings.kindergeldChildren)),
+    })
+    const reichenSweepMin = findMinGrossPositiveReichen(
+      papOptsPreRange,
+      settings.filing === 'married'
+        ? { income1: Math.max(0, settings.income1), income2: Math.max(0, settings.income2) }
+        : undefined,
+    )
+    const reichenStretch =
+      reichenSweepMin != null ? paddedChartMaxForReichenZone(reichenSweepMin, 5000) : 0
+    const rangeMaxUncapped = Math.max(rangeMaxBase, DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024, reichenStretch)
+    const rangeMax = Math.min(rangeMaxUncapped, MAX_CHART_SALARY_EUR)
     const income = clamp(filingIncome, rangeMin, rangeMax)
     const kindergeldChildren = Math.max(0, Math.floor(settings.kindergeldChildren))
     return {
@@ -210,6 +240,12 @@ export default function App() {
             onMarriedSocialSplitChange={setMarriedSocialSplit}
             percentileAxis={percentileAxis}
             onPercentileAxisChange={setPercentileAxis}
+            vspInRates={vspInRates}
+            onVspInRatesChange={setVspInRates}
+            vspInComposition={vspInComposition}
+            onVspInCompositionChange={setVspInComposition}
+            investmentInRates={investmentInRates}
+            onInvestmentInRatesChange={setInvestmentInRates}
           />
           <TaxChart
             series={series}
@@ -224,16 +260,10 @@ export default function App() {
             marriedSocialSplit={marriedSocialSplit}
             percentileAxis={percentileAxis}
           />
-          <TaxDistributionSimChart explorer={normalizedSettings} />
           <Results
             result={current}
             settings={normalizedSettings}
             vspInRates={vspInRates}
-            onVspInRatesChange={setVspInRates}
-            vspInComposition={vspInComposition}
-            onVspInCompositionChange={setVspInComposition}
-            investmentInRates={investmentInRates}
-            onInvestmentInRatesChange={setInvestmentInRates}
             yearCompareEnabled={yearCompareEnabled}
             onYearCompareEnabledChange={setYearCompareEnabled}
             compareYearA={compareYearA}
@@ -244,6 +274,7 @@ export default function App() {
             resultCompareA={resultCompareA}
             resultCompareB={resultCompareB}
           />
+          <TaxDistributionSimChart explorer={normalizedSettings} />
           <PrivilegeCheck result={current} settings={normalizedSettings} />
           <PercentileTaxContributionChart explorer={normalizedSettings} />
           <TaxTips

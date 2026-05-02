@@ -99,6 +99,9 @@ export function jaegFor(year: number, override?: number): number {
   return year === 2026 ? JAEG_2026 : JAEG_2025
 }
 
+/** Upper bound for the explorer’s salary / household RE4 domain (EUR) — aligns with headline DAX‑level packages. */
+export const MAX_CHART_SALARY_EUR = 10_000_000
+
 /**
  * Solidaritätszuschlag on wage tax / income tax, per SolZG §4.
  *
@@ -174,6 +177,10 @@ export type PapCalculationResult = {
   church: number
   tax: number
   lstlzz: number
+  /** Subset of **`base`**: UPTAB Euros from the **45 %** block vs extrapolating **42 %** on **⌊ZVE/kztab⌋** (not added to ZVE). */
+  reichenTariffEur: number
+  /** Payroll overage (LSt+Soli+KiSt on wages) attributable to that UPTAB slice; still part of **`payrollTax`**, not ZVE. */
+  reichenPayrollEur: number
   /**
    * Per-earner wage gross and social lines when modelling married households
    * with {@link PapOptions.partnerRe4}; omitted for single filers or lump-sum married.
@@ -233,6 +240,79 @@ function uptab26(zve: number, kztab = 1): number {
   }
 
   return st * kztab
+}
+
+/** ZVE / KZTAB floor from which the 45% tariff applies (same knot 2025/2026 in this PAP port). */
+export const REICHEN_TARIFF_X_THRESHOLD = 277_826
+
+/**
+ * Minimum **Zu versteuerndes Einkommen** whose tariff quotient **⌊ZVE / KZTAB⌋** enters the upper block at
+ * **`REICHEN_TARIFF_X_THRESHOLD`** (exact floor for marginal **45 %** in our UPTAB port).
+ *
+ * - **kztab = 1** → EUR **277 826** taxable income threshold (typically **single** tariff path).
+ * - **kztab = 2** → EUR **555 652** threshold on **joint** ZVE (splitting **`KZTAB = 2`**, incl. dual‑earner household chart path).
+ *
+ * **Gross** RE4 where you first reach this knot depends on Kinder, VSP, PKV/GKV … — use each point’s **`zve`** in the graphs.
+ */
+export function minZVeFloorForTariffTopBracket(kztab: number): number {
+  return REICHEN_TARIFF_X_THRESHOLD * Math.max(1, kztab)
+}
+
+/**
+ * **KZTAB** used inside `calculatePapResultFromRE4`. When `partnerRe4` triggers the married two‑worker path externally,
+ * use **`TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD`** instead (always 2).
+ */
+export function tariffKztabRe4SweepPath(opts: PapOptions): 1 | 2 {
+  const o = { ...DEFAULTS, ...opts }
+  return o.filing === 'married' || o.stkl === 3 ? 2 : 1
+}
+
+/** Household total (`calculatePapForMarriedHouseholdTotal`): joint ZVE is always taxed with **KZTAB = 2**. */
+export const TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD = 2 as const
+
+/**
+ * Extra UPTAB income tax (EUR) from the 45% top bracket vs extrapolating the linear 42% middle-bracket formula —
+ * the usual “Reichensteuer” / Spitzensteuersatz pedagogical slice. Zero below **`REICHEN_TARIFF_X_THRESHOLD`** on **X = ⌊ZVE/kztab⌋**.
+ *
+ * Inputs come from **this scenario’s curve** ({@link PapCalculationResult.zve}, {@link PapCalculationResult.kztab}, year knobs).
+ *
+ * Not “on top of” ZVE: ZVE **is only the tax base**; this amount **sits inside** tariff output **`base`**, partitioning it for charts.
+ *
+ * Applicable **2025/2026 only** (`0` elsewhere).
+ */
+export function reichenTariffSurchargeEur(zve: number, kztab: number, year: number): number {
+  const z = Math.max(0, zve)
+  const kt = Math.max(1, kztab)
+  const X = Math.floor(z / kt)
+  if (X < REICHEN_TARIFF_X_THRESHOLD) return 0
+  if (year === 2026) {
+    const actual = uptab26(z, kt)
+    const hypo = Math.floor(X * 0.42 - 11135.63) * kt
+    return Math.max(0, actual - hypo)
+  }
+  if (year === 2025) {
+    const actual = uptab25(z, kt)
+    const hypo = Math.floor(X * 0.42 - 10911.92) * kt
+    return Math.max(0, actual - hypo)
+  }
+  return 0
+}
+
+function reichenPayrollDeltaEur(
+  base: number,
+  payrollTax: number,
+  reichenTariffEur: number,
+  solidarity: boolean,
+  churchRate: number,
+  year: number,
+  kztab: number,
+): number {
+  if (reichenTariffEur <= 0) return 0
+  const hypoBase = Math.max(0, base - reichenTariffEur)
+  const hypoSolz = computeWageSoli(hypoBase, solidarity, year, kztab)
+  const hypoChurch = Math.round(hypoBase * (churchRate || 0))
+  const hypoPayroll = hypoBase + hypoSolz + hypoChurch
+  return Math.max(0, payrollTax - hypoPayroll)
 }
 
 export function calculatePapTax(income: number, opts?: PapOptions): number {
@@ -424,6 +504,16 @@ function calculateMarriedHouseholdFromIncomes(re4a: number, re4b: number, opts?:
   const wageSolz = computeWageSoli(base, o.solidarity, o.year, kztab)
   const wageChurch = Math.round(base * (o.churchRate || 0))
   const payrollTax = base + wageSolz + wageChurch
+  const reichenTariffEur = reichenTariffSurchargeEur(zve, kztab, o.year)
+  const reichenPayrollEur = reichenPayrollDeltaEur(
+    base,
+    payrollTax,
+    reichenTariffEur,
+    o.solidarity,
+    o.churchRate || 0,
+    o.year,
+    kztab,
+  )
 
   const investmentIncome = Math.max(0, o.investmentIncome || 0)
   const saverAllowance = 2000
@@ -489,6 +579,8 @@ function calculateMarriedHouseholdFromIncomes(re4a: number, re4b: number, opts?:
     church,
     tax,
     lstlzz: tax,
+    reichenTariffEur,
+    reichenPayrollEur,
     marriedEarners,
   }
 }
@@ -510,6 +602,16 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
   const wageSolz = computeWageSoli(base, o.solidarity, o.year, kztab)
   const wageChurch = Math.round(base * (o.churchRate || 0))
   const payrollTax = base + wageSolz + wageChurch
+  const reichenTariffEur = reichenTariffSurchargeEur(zve, kztab, o.year)
+  const reichenPayrollEur = reichenPayrollDeltaEur(
+    base,
+    payrollTax,
+    reichenTariffEur,
+    o.solidarity,
+    o.churchRate || 0,
+    o.year,
+    kztab,
+  )
 
   const investmentIncome = Math.max(0, o.investmentIncome || 0)
   const saverAllowance = o.filing === 'married' ? 2000 : 1000
@@ -560,7 +662,61 @@ export function calculatePapResultFromRE4(re4: number, opts?: PapOptions): PapCa
     church,
     tax,
     lstlzz: tax,
+    reichenTariffEur,
+    reichenPayrollEur,
   }
+}
+
+const REICHEN_SALARY_SEARCH_CEILING_EUR = 10_000_000
+
+/** Round gross “tail” upwards so the plotted domain shows a readable margin beyond the first Reichen point. */
+export function paddedChartMaxForReichenZone(minGrossEUR: number, roundingStep = 5000): number {
+  return Math.ceil((Math.max(0, minGrossEUR) * 1.02) / roundingStep) * roundingStep
+}
+
+/**
+ * Smallest sampled gross/household RE4 along the explorer’s curve path where {@link PapCalculationResult.reichenTariffEur}
+ * turns positive. Uses the same modelling as charts: **`filing !== 'married'`** → sweep `calculatePapResultFromRE4`; **married**
+ * two-earner path → sweep `calculatePapForMarriedHouseholdTotal` with the supplied reference split.
+ *
+ * Statutory tariff knot **⌊ZVE / KZTAB⌋ ≥ 277 826** is easiest to state for **kztab = 1** (typical Grundtarif / single filing);
+ * splitting (**kztab = 2**) moves the surcharge to a substantially higher household ZVE — this function reflects that automatically.
+ *
+ * Returns `null` before the surcharge appears below {@link REICHEN_SALARY_SEARCH_CEILING_EUR} or outside 2025/2026 tariff years.
+ */
+export function findMinGrossPositiveReichen(
+  opts: PapOptions,
+  marriedReference?: { income1: number; income2: number },
+): number | null {
+  const o = { ...DEFAULTS, ...opts }
+  if (!(o.year === 2025 || o.year === 2026)) return null
+
+  const marriedRefs = (): { income1: number; income2: number } => {
+    if (!marriedReference) return { income1: 60_000, income2: 60_000 }
+    const a = Math.max(0, marriedReference.income1)
+    const b = Math.max(0, marriedReference.income2)
+    return a + b > 0 ? { income1: a, income2: b } : { income1: 60_000, income2: 60_000 }
+  }
+
+  const hasPositiveAt = (guess: number): boolean => {
+    const g = Math.max(0, Math.round(guess))
+    if (o.filing === 'married') {
+      const { income1: i1, income2: i2 } = marriedRefs()
+      return calculatePapForMarriedHouseholdTotal(g, i1, i2, o).reichenTariffEur > 0
+    }
+    return calculatePapResultFromRE4(g, o).reichenTariffEur > 0
+  }
+
+  if (!hasPositiveAt(REICHEN_SALARY_SEARCH_CEILING_EUR)) return null
+
+  let lo = 0
+  let hi = REICHEN_SALARY_SEARCH_CEILING_EUR
+  while (hi - lo > 500) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (hasPositiveAt(mid)) hi = mid
+    else lo = mid
+  }
+  return hi
 }
 
 // MLSTJAHR simplified: compute ZVE = RE4 - ZTABFB - VSP, then call the year tariff.

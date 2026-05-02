@@ -67,12 +67,19 @@ export const DESTATIS_FULLTIME_WAGE_PERCENTILES_2024: ReadonlyArray<{ readonly p
 ]
 
 /**
- * X-axis cap when aligning the chart with the full Destatis ladder: highest published threshold (p99).
- * Destatis Pressemitteilung 134/2025 tabulates percentiles through p99 only; we treat this as the chart
- * “p100” ceiling so p99 rugs and income series are not clipped below peer tails.
+ * Highest **published** nominal gross in the Destatis 2024 full-time percentile table (**p = 99** entry).
+ *
+ * Important: Destatis publishes deciles plus **p99 only** — there is **no official “p100” wage** in this table.
+ * The chart deliberately extends the EUR axis beyond this value where needed so tariff features above the empirical
+ * wage tail remain visible ({@link findMinGrossPositiveReichen}).
  */
-export const DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 =
+export const DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024 =
   DESTATIS_FULLTIME_WAGE_PERCENTILES_2024[DESTATIS_FULLTIME_WAGE_PERCENTILES_2024.length - 1]!.eur
+
+/**
+ * @deprecated Use {@link DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024}; this alias was mislabelled (“p100”) — Destatis publishes p99 max only.
+ */
+export const DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 = DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024
 
 /**
  * Chart rug positions: **only** percentiles Destatis actually publishes — p10 … p90 (deciles),

@@ -63,8 +63,7 @@ button {
 }
 
 .control-panel,
-.chart-panel,
-.results-panel {
+.chart-panel {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -92,8 +91,7 @@ button {
   padding-top: 16px;
 }
 
-.control-section h2,
-.results-panel h2 {
+.control-section h2 {
   margin: 0 0 12px;
   font-size: 15px;
   line-height: 1.2;
@@ -206,15 +204,16 @@ select:focus {
 
 .visual-pane {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(360px, 38vw, 540px);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "controls controls"
-    "chart    results"
-    "tax-sim  tax-sim"
-    "privilege privilege"
-    "pct-tax  pct-tax"
-    "tips     tips"
-    "glossary glossary";
+    "controls"
+    "chart"
+    "tax-breakdown"
+    "tax-sim"
+    "privilege"
+    "pct-tax"
+    "tips"
+    "glossary";
   gap: 18px;
   align-items: start;
 }
@@ -465,6 +464,34 @@ select:focus {
   margin-top: 10px;
 }
 
+.chart-controls-chart-prefs-caption {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #6b7280;
+  margin: 4px 0 8px;
+}
+
+.chart-controls-checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.chart-controls-checkbox-compact {
+  display: grid;
+  grid-template-columns: 18px auto;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 0;
+  font-size: 12px;
+}
+
+.chart-controls-checkbox-compact input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+}
+
 .chart-panel {
   grid-area: chart;
   min-height: 560px;
@@ -491,8 +518,13 @@ select:focus {
   grid-area: pct-tax;
 }
 
+.tax-breakdown-panel {
+  grid-area: tax-breakdown;
+}
+
 .tax-dist-sim-panel,
-.percentile-tax-panel {
+.percentile-tax-panel,
+.tax-breakdown-panel {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -520,7 +552,8 @@ select:focus {
   transition: transform 0.12s ease;
 }
 
-.tax-dist-sim-panel[open] .tax-dist-sim-expand-summary::before {
+.tax-dist-sim-panel[open] .tax-dist-sim-expand-summary::before,
+.tax-breakdown-panel[open] .tax-dist-sim-expand-summary::before {
   transform: rotate(90deg);
 }
 
@@ -613,10 +646,11 @@ select:focus {
   margin-bottom: 0;
 }
 
-.results-panel {
-  grid-area: results;
-  padding: 16px;
-  min-width: 0;
+.tax-breakdown-summary-preview {
+  font-weight: 400;
+  font-size: 13px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
 }
 
 .result-kpi {
@@ -647,12 +681,6 @@ select:focus {
   color: #6b7280;
   font-size: 12px;
   font-weight: 400;
-}
-
-.result-toggle {
-  border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
 }
 
 .results-year-compare {
@@ -757,7 +785,7 @@ select:focus {
     grid-template-areas:
       "controls"
       "chart"
-      "results"
+      "tax-breakdown"
       "tax-sim"
       "privilege"
       "pct-tax"

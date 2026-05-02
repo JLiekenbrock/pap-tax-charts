@@ -106,8 +106,12 @@ export function marginalTaxRate(
 }
 
 export type MarginalDecomposition = {
-  /** Marginal income tax (the progressive UPTAB base, no Soli/church). */
+  /** Marginal UPTAB outside the capped 45% top-rate slice (see {@link reichenTariff}). */
   incomeTax: number
+  /** Marginal effect of the 45% top tariff (“Reichensteuer”) on UPTAB. */
+  reichenTariff: number
+  /** Raw marginal wage UPTAB (= incomeTax + reichenTariff before capping splits). */
+  incomeTaxRaw: number
   /** Marginal solidarity surcharge. */
   soli: number
   /** Marginal church tax. */
@@ -149,20 +153,57 @@ export function marginalDecomposition(
     : upperIncome - lowerIncome
 
   if (basisDelta <= 0) {
-    return { incomeTax: 0, soli: 0, church: 0, pension: 0, healthCare: 0, unemployment: 0, total: 0 }
+    return {
+      incomeTax: 0,
+      reichenTariff: 0,
+      incomeTaxRaw: 0,
+      soli: 0,
+      church: 0,
+      pension: 0,
+      healthCare: 0,
+      unemployment: 0,
+      total: 0,
+    }
   }
 
   const pct = (delta: number) => (delta / basisDelta) * 100
 
   // Pure income tax (UPTAB base only) = baseTax - investmentTax. Since
   // investmentTax is constant in re4, ΔbaseTax = Δbase.
-  const incomeTax = pct((upper.baseTax - upper.investmentTax) - (lower.baseTax - lower.investmentTax))
+  const incomeTaxRaw = pct((upper.baseTax - upper.investmentTax) - (lower.baseTax - lower.investmentTax))
+  const reichenMarginal = pct(upper.reichenTariffEur - lower.reichenTariffEur)
+  const reichenTariff = Math.min(Math.max(0, reichenMarginal), Math.max(0, incomeTaxRaw))
+  const incomeTax = incomeTaxRaw - reichenTariff
   const soli = pct((upper.solz - upper.investmentSolz) - (lower.solz - lower.investmentSolz))
   const church = pct((upper.church - upper.investmentChurch) - (lower.church - lower.investmentChurch))
   const pension = pct(upper.vspRenten - lower.vspRenten)
   const healthCare = pct(upper.vspKrankenPflege - lower.vspKrankenPflege)
   const unemployment = pct(upper.vspArbeitslosen - lower.vspArbeitslosen)
-  const total = incomeTax + soli + church + pension + healthCare + unemployment
+  const total = incomeTaxRaw + soli + church + pension + healthCare + unemployment
 
-  return { incomeTax, soli, church, pension, healthCare, unemployment, total }
+  return { incomeTax, reichenTariff, incomeTaxRaw, soli, church, pension, healthCare, unemployment, total }
+}
+
+/**
+ * Marginal payroll-tax share (LSt + Soli + KiSt on wages) attributable to the 45% top-rate slice,
+ * as % of gross or ZVE (same finite-difference window as {@link marginalTaxRate}).
+ */
+export function marginalReichenPayrollPercent(
+  income: number,
+  options: PapOptions,
+  basis: RateBasis,
+  { delta = 500, marriedChartRef }: { delta?: number; marriedChartRef?: MarriedChartReferenceIncomes } = {},
+): number | null {
+  const lowerIncome = Math.max(0, income - delta)
+  const upperIncome = income + delta
+  const lower = papAtIncomeLevel(lowerIncome, options, marriedChartRef)
+  const upper = papAtIncomeLevel(upperIncome, options, marriedChartRef)
+
+  const basisDelta =
+    basis === 'zve' ? upper.zve - lower.zve : upperIncome - lowerIncome
+  if (basisDelta <= 0) return null
+
+  const p = ((upper.reichenPayrollEur - lower.reichenPayrollEur) / basisDelta) * 100
+  if (!Number.isFinite(p)) return null
+  return Math.max(0, p)
 }

@@ -18,6 +18,11 @@ import {
   PapOptions,
   calculatePapForMarriedHouseholdTotal,
   calculatePapResultFromRE4,
+  minZVeFloorForTariffTopBracket,
+  tariffKztabRe4SweepPath,
+  TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD,
+  REICHEN_TARIFF_X_THRESHOLD,
+  MAX_CHART_SALARY_EUR,
   type MarriedEarnerSlice,
 } from '../lib/pap'
 import {
@@ -27,11 +32,12 @@ import {
   marriedEarnerEmployeeSocial,
   marginalDecomposition,
   marginalTaxRate,
+  marginalReichenPayrollPercent,
 } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
 import {
   DESTATIS_CHART_INCOME_RUG_MARKERS_2024,
-  DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024,
+  DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024,
   grossAtDeStatisPercentile,
   individualIncomePercentileDeStatis,
   PRIVILEGE_INCOME_SOURCE_LABEL,
@@ -76,6 +82,7 @@ export type ChartMetric =
   | 'ztabfb'
   | 'wvfrb'
   | 'baseTax'
+  | 'reichenPayroll'
   | 'vspRenten'
   | 'vspKrankenPflege'
   | 'vspArbeitslosen'
@@ -105,6 +112,13 @@ export const CHART_METRICS: MetricConfig[] = [
   { key: 'ztabfb', label: 'ZTABFB', color: '#EA580C', unit: 'eur', value: (point) => point.ztabfb },
   { key: 'wvfrb', label: 'WVFRB', color: '#0891B2', unit: 'eur', value: (point) => point.wvfrb },
   { key: 'baseTax', label: 'Base tax', color: '#DC2626', unit: 'eur', value: (point) => point.baseTax },
+  {
+    key: 'reichenPayroll',
+    label: 'Reichensteuer (45% slice · share of payroll LSt)',
+    color: '#9F1239',
+    unit: 'eur',
+    value: (point) => point.reichenPayrollEur,
+  },
   { key: 'vspRenten', label: 'Pension', color: '#4F46E5', unit: 'eur', value: (point) => point.vspRenten },
   { key: 'vspKrankenPflege', label: 'Health/care', color: '#9333EA', unit: 'eur', value: (point) => point.vspKrankenPflege },
   { key: 'vspArbeitslosen', label: 'Unemployment', color: '#D97706', unit: 'eur', value: (point) => point.vspArbeitslosen },
@@ -276,7 +290,18 @@ export default function TaxChart({
 
   const cashStackParts = React.useMemo<StackPart[]>(() => {
     const parts: StackPart[] = [
-      { key: 'payrollTax', label: 'Payroll tax', color: '#047857', value: (point) => Math.max(0, point.payrollTax) },
+      {
+        key: 'payrollCore',
+        label: 'Payroll tax (excl. 45 % slice)',
+        color: '#047857',
+        value: (point) => Math.max(0, point.payrollTax - point.reichenPayrollEur),
+      },
+      {
+        key: 'reichenPayroll',
+        label: 'Reichensteuer (45% · payroll incl. proportional Soli/KiSt)',
+        color: '#9F1239',
+        value: (point) => Math.max(0, point.reichenPayrollEur),
+      },
       {
         key: 'capitalGainsTax',
         label: 'Capital gains tax',
@@ -362,7 +387,9 @@ export default function TaxChart({
     // lines stop before the chart's intended x domain.
     const minIncome = Math.max(0, settings.rangeMin)
     const maxIncome = Math.max(minIncome, settings.rangeMax)
-    const interval = 1000
+    const span = maxIncome - minIncome
+    const targetPoints = 1200
+    const interval = span <= 0 ? 1000 : Math.max(1000, Math.ceil(span / targetPoints))
     const opts = toPapOptions(settings)
     const marriedChartRef =
       settings.filing === 'married'
@@ -432,6 +459,36 @@ export default function TaxChart({
       return count > 0 ? sum / count : null
     })
   }, [mode, ratesSeries, settings, rateBasis, vspInRates])
+
+  const marginalReichenPayrollRates = React.useMemo(() => {
+    if (mode !== 'rates') return [] as (number | null)[]
+    const opts = toPapOptions(settings)
+    const marriedChartRef =
+      settings.filing === 'married'
+        ? { income1: settings.income1, income2: settings.income2 }
+        : undefined
+    const raw = ratesSeries.map((point) => {
+      const denom = rateBasis === 'zve' ? point.zve : point.income
+      if (denom < 1000) return null
+      return marginalReichenPayrollPercent(point.income, opts, rateBasis, {
+        delta: 500,
+        marriedChartRef,
+      })
+    })
+    const window = 2
+    return raw.map((value, i) => {
+      if (value === null) return null
+      let sum = 0
+      let count = 0
+      for (let j = Math.max(0, i - window); j <= Math.min(raw.length - 1, i + window); j++) {
+        const v = raw[j]
+        if (v === null) continue
+        sum += v
+        count++
+      }
+      return count > 0 ? sum / count : null
+    })
+  }, [mode, ratesSeries, settings, rateBasis])
 
   const data = {
     labels: mode === 'stacked' || mode === 'percent' ? series.map((point) => point.income) : undefined,
@@ -505,6 +562,21 @@ export default function TaxChart({
                 spanGaps: false,
                 yAxisID: 'yPercent',
               },
+              {
+                label: 'Marginal Reichensteuer (payroll: LSt + Soli + KiSt on 45% slice)',
+                data: ratesSeries.map((point, index) => ({
+                  x: salaryToLineDatasetX(point.income),
+                  y: marginalReichenPayrollRates[index],
+                })) as any,
+                borderColor: '#9F1239',
+                backgroundColor: '#9F1239',
+                borderWidth: 2,
+                borderDash: [4, 4],
+                pointRadius: 0,
+                tension: 0.25,
+                spanGaps: false,
+                yAxisID: 'yPercent',
+              },
             ] satisfies ChartDataset<'line'>[]
           })()
       : mode === 'stacked'
@@ -522,9 +594,10 @@ export default function TaxChart({
           }))
         : mode === 'decomposition'
           ? (() => {
-              type Layer = { key: keyof Omit<MarginalDecomposition, 'total'>; label: string; color: string }
+              type Layer = { key: keyof Omit<MarginalDecomposition, 'total' | 'incomeTaxRaw'>; label: string; color: string }
               const layers: Layer[] = [
                 { key: 'incomeTax', label: 'Income tax', color: '#047857' },
+                { key: 'reichenTariff', label: 'Reichensteuer (45%)', color: '#9F1239' },
                 { key: 'soli', label: 'Solidaritätszuschlag', color: '#DC2626' },
                 { key: 'church', label: 'Church tax', color: '#BE123C' },
                 { key: 'pension', label: 'Pension (RV)', color: '#4F46E5' },
@@ -756,6 +829,17 @@ export default function TaxChart({
   // change; include year (and mode) in the key so toggling tax year remounts.
   const chartInstanceKey = `${mode}-${settings.year}-${settings.stkl}-${settings.filing}-${marriedSocialSplit}-${percentileAxis}-${percentileScaleXActive}`
 
+  const reichenChartNote = React.useMemo(() => {
+    const papProbe = toPapOptions(settings)
+    const kzt =
+      settings.filing === 'married' ? TARIFF_KZTAB_DUAL_EARNER_HOUSEHOLD : tariffKztabRe4SweepPath(papProbe)
+    return {
+      kzt,
+      zveAtKnotEur: minZVeFloorForTariffTopBracket(kzt),
+      xKnot: REICHEN_TARIFF_X_THRESHOLD,
+    }
+  }, [settings])
+
   const marriedScatterNote = settings.filing === 'married' ? (
     <em className="chart-percentile-caption__note">
       Scatter x uses household RE4; Destatis percentile reference is individual full-time wages.
@@ -774,8 +858,24 @@ export default function TaxChart({
       ) : null}
       <p className="chart-percentile-caption">
         Rug ticks: {PRIVILEGE_INCOME_SOURCE_LABEL} — only published cutoffs (p10–p90 deciles and p99; no interpolated p91–p98).
-        RE4 axis runs to EUR {DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024.toLocaleString()} (Destatis highest published
-        percentile, chart cap).
+        Last tabulated wage percentile is{' '}
+        <strong>p99 ≈ EUR {DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024.toLocaleString('de-DE')}</strong>; the salary axis can extend beyond
+        that (typically to EUR {settings.rangeMax.toLocaleString('de-DE')} here) so the{' '}
+        <strong>45&nbsp;% marginal tariff (often called Reichensteuer)</strong> appears — that extension is <strong>not</strong> any Destatis percentile
+        (“p100”). The computed salary / household RE4 range never exceeds <strong>EUR {MAX_CHART_SALARY_EUR.toLocaleString('de-DE')}</strong> (implementation ceiling).
+        <br />
+        <span className="chart-percentile-caption__note">
+          <strong>ZVE vs Reichensteuer:</strong> each point’s ZVE line is the <strong>tax base</strong> (gross minus ZTABFB/VSP …). The plotted
+          Reichensteuer EUR slices are <strong>parts of payroll Lohnsteuer + proportional Soli/KiSt</strong> from the tariff on that base — they are{' '}
+          <strong>not</strong> stacked on top of ZVE and <strong>do not</strong> double‑count it.
+          Under your current inputs, the statutory knot is{' '}
+          <strong>
+            X = ⌊ZVE / KZTAB⌋ ≥ {reichenChartNote.xKnot.toLocaleString('de-DE')}
+          </strong>{' '}
+          with <strong>KZTAB = {reichenChartNote.kzt}</strong> on this path (full PAP options: year, children, STKL, VSP/PKV, Soli/KiSt, …), so the
+          taxable-income floor for that block is about <strong>EUR {reichenChartNote.zveAtKnotEur.toLocaleString('de-DE')}</strong> — the gross RE4
+          where you first hit it still moves with every scenario.
+        </span>
         {percentileScaleXActive ? (
           <> Rugs align vertically with the percentile grid.</>
         ) : null}{' '}
