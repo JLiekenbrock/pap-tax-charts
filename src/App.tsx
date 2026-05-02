@@ -7,6 +7,7 @@ import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
 import Glossary from './components/Glossary'
 import TaxDistributionSimChart from './components/TaxDistributionSimChart'
+import PercentileTaxContributionChart from './components/PercentileTaxContributionChart'
 import { PapCalculationResult, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4 } from './lib/pap'
 import { deriveStkl } from './lib/stkl'
 import { DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 } from './lib/privilege_benchmark'
@@ -244,6 +245,7 @@ export default function App() {
             resultCompareB={resultCompareB}
           />
           <PrivilegeCheck result={current} settings={normalizedSettings} />
+          <PercentileTaxContributionChart explorer={normalizedSettings} />
           <TaxTips
             result={current}
             options={papOpts}

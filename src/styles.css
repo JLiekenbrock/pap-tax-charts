@@ -212,6 +212,7 @@ select:focus {
     "chart    results"
     "tax-sim  tax-sim"
     "privilege privilege"
+    "pct-tax  pct-tax"
     "tips     tips"
     "glossary glossary";
   gap: 18px;
@@ -484,6 +485,14 @@ select:focus {
 
 .tax-dist-sim-panel {
   grid-area: tax-sim;
+}
+
+.percentile-tax-panel {
+  grid-area: pct-tax;
+}
+
+.tax-dist-sim-panel,
+.percentile-tax-panel {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -553,6 +562,21 @@ select:focus {
 .tax-dist-sim-canvas-host {
   height: 320px;
   min-height: 220px;
+  position: relative;
+  width: 100%;
+}
+
+/** Decile‑stack composition bar + Chart.js legend. */
+.percentile-tax-decile-stack-host {
+  height: 240px;
+  min-height: 200px;
+  position: relative;
+  width: 100%;
+}
+
+.percentile-tax-decile-compare-host {
+  height: 300px;
+  min-height: 260px;
   position: relative;
   width: 100%;
 }
@@ -722,6 +746,7 @@ select:focus {
       "results"
       "tax-sim"
       "privilege"
+      "pct-tax"
       "tips"
       "glossary";
   }
