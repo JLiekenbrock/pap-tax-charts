@@ -6,6 +6,7 @@ import Results, { type PapChartYear } from './components/Results'
 import PrivilegeCheck from './components/PrivilegeCheck'
 import TaxTips from './components/TaxTips'
 import Glossary from './components/Glossary'
+import TaxDistributionSimChart from './components/TaxDistributionSimChart'
 import { PapCalculationResult, calculatePapForMarriedHouseholdTotal, calculatePapResultFromRE4 } from './lib/pap'
 import { deriveStkl } from './lib/stkl'
 import { DESTATIS_FULLTIME_WAGE_P100_CHART_MAX_EUR_2024 } from './lib/privilege_benchmark'
@@ -222,6 +223,7 @@ export default function App() {
             marriedSocialSplit={marriedSocialSplit}
             percentileAxis={percentileAxis}
           />
+          <TaxDistributionSimChart explorer={normalizedSettings} />
           <Results
             result={current}
             settings={normalizedSettings}

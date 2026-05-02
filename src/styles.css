@@ -210,6 +210,7 @@ select:focus {
   grid-template-areas:
     "controls controls"
     "chart    results"
+    "tax-sim  tax-sim"
     "privilege privilege"
     "tips     tips"
     "glossary glossary";
@@ -481,6 +482,81 @@ select:focus {
   width: 100%;
 }
 
+.tax-dist-sim-panel {
+  grid-area: tax-sim;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.tax-dist-sim-expand-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.2;
+  color: #111827;
+  list-style: none;
+}
+
+.tax-dist-sim-expand-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tax-dist-sim-expand-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.12s ease;
+}
+
+.tax-dist-sim-panel[open] .tax-dist-sim-expand-summary::before {
+  transform: rotate(90deg);
+}
+
+.tax-dist-sim-details-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.tax-dist-sim-stats {
+  margin: 12px 0 10px;
+  padding: 10px 0 12px;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tax-dist-sim-chart-subheading {
+  margin: 18px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #111827;
+}
+
+.tax-dist-sim-controls {
+  margin-bottom: 12px;
+}
+
+.tax-dist-sim-check {
+  align-items: flex-start;
+}
+
+.tax-dist-sim-check span {
+  line-height: 1.35;
+  font-size: 13px;
+  color: #374151;
+}
+
+.tax-dist-sim-canvas-host {
+  height: 320px;
+  min-height: 220px;
+  position: relative;
+  width: 100%;
+}
+
 .chart-percentile-caption {
   margin: 0 0 8px;
   font-size: 11px;
@@ -644,6 +720,7 @@ select:focus {
       "controls"
       "chart"
       "results"
+      "tax-sim"
       "privilege"
       "tips"
       "glossary";
