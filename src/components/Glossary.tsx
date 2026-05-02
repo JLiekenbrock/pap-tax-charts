@@ -92,6 +92,19 @@ const ENTRIES: ReadonlyArray<Entry> = [
     ),
   },
   {
+    term: 'VPI',
+    def: (
+      <>
+        <i>VPI</i>: <i>Verbrauchspreisindex</i> Deutschland (Destatis national consumer‑price series). This explorer uses{' '}
+        published <strong>Jahresmittel</strong> index levels (<strong>basis 2020 = 100</strong>), bundled in{' '}
+        <code>germany_vpi_annual.ts</code>. Turning <strong>nominal</strong> cash at tariff year <em>y</em> into{' '}
+        <strong>Konstant‑EUR</strong> at price‑base year <em>B</em>: multiply by{' '}
+        <em>VPI(B)&nbsp;/&nbsp;VPI(y)</em> (whole euros rounded). The <strong>reciprocal</strong> maps Konstant wages back to
+        tariff‑year nominal gross for PAP (“Real salaries”). Not the same datasets as wage benchmarks in Privilege Check.
+      </>
+    ),
+  },
+  {
     term: 'Beamtenmodus',
     def: (
       <>

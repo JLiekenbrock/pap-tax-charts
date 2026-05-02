@@ -2,6 +2,7 @@ import React from 'react'
 import { PapCalculationResult } from '../lib/pap'
 import { actualContributions } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
+import { realEuroFromNominalEuro } from '../lib/germany_vpi_annual'
 
 export type PapChartYear = 2021 | 2025 | 2026
 
@@ -30,6 +31,7 @@ type ResultRowKey =
   | 'income_after_tax'
   | 'social'
   | 'take_home'
+  | 'take_home_konstant'
   | 'kindergeld'
   | 'take_home_kindergeld'
   | 'eff_tax_salary'
@@ -57,6 +59,7 @@ const RESULT_ROWS_ORDER: ResultRowKey[] = [
   'income_after_tax',
   'social',
   'take_home',
+  'take_home_konstant',
   'kindergeld',
   'take_home_kindergeld',
   'eff_tax_salary',
@@ -79,6 +82,8 @@ const RESULT_ROWS_ORDER: ResultRowKey[] = [
 export type ResultRow = {
   key: ResultRowKey
   label: string
+  /** Optional longer explanation rendered under the label (Konstant metrics, disclaimers). */
+  detail?: string
   display: string
   /** Raw EUR for Δ column when both sides are EUR amounts. */
   deltaEur: number | null
@@ -104,8 +109,15 @@ function buildResultRows(
 
   const byKey = new Map<ResultRowKey, ResultRow>()
 
-  const setEur = (key: ResultRowKey, label: string, amount: number) => {
-    byKey.set(key, { key, label, display: eur(amount), deltaEur: amount, deltaRatePct: null })
+  const setEur = (key: ResultRowKey, label: string, amount: number, detail?: string) => {
+    byKey.set(key, {
+      key,
+      label,
+      ...(detail !== undefined ? { detail } : {}),
+      display: eur(amount),
+      deltaEur: amount,
+      deltaRatePct: null,
+    })
   }
   const setPct = (key: ResultRowKey, label: string, pct: number) => {
     byKey.set(key, { key, label, display: `${pct.toFixed(2)}%`, deltaEur: null, deltaRatePct: pct })
@@ -119,6 +131,17 @@ function buildResultRows(
   setEur('income_after_tax', 'Income after tax', incomeAfterTax)
   setEur('social', 'Social contributions', socialContributions)
   setEur('take_home', 'Take-home cash', takeHomeCash)
+  {
+    const B = settings.realIncomeBaseYear ?? 2021
+    const yTariff = result.year
+    const takeKonst = Math.max(0, realEuroFromNominalEuro(takeHomeCash, yTariff, B))
+    const detailParts = [
+      `Formula: Take‑home (Konstant ${B}) = round( Take‑home cash × VPI_JD(${B}) ÷ VPI_JD(${yTariff}) ) in €.`,
+      `VPI_JD(y) is the Destatis Deutschland annual index (Jahresmittel), basis 2020 = 100.`,
+    ]
+    const detail = detailParts.join(' ')
+    setEur('take_home_konstant', `Take‑home (Konstant ${B})`, takeKonst, detail)
+  }
 
   if (settings.includeKindergeld) {
     setEur('kindergeld', 'Kindergeld', kindergeld)
@@ -135,8 +158,14 @@ function buildResultRows(
     }
   }
   if (settings.filing === 'married') {
-    setEur('income1', 'Income 1', settings.income1)
-    setEur('income2', 'Income 2', settings.income2)
+    const m = result.marriedEarners
+    if (m) {
+      setEur('income1', 'Income 1', m[0].income)
+      setEur('income2', 'Income 2', m[1].income)
+    } else {
+      setEur('income1', 'Income 1', settings.income1)
+      setEur('income2', 'Income 2', settings.income2)
+    }
   }
   if (result.investmentIncome > 0) {
     setEur('investment_income', 'Investment income', result.investmentIncome)
@@ -200,14 +229,15 @@ export default function Results({
     [result, settings, vspInRates],
   )
 
-  const rowsA = React.useMemo(
-    () => (resultCompareA ? buildResultRows(resultCompareA, settings, vspInRates) : null),
-    [resultCompareA, settings, vspInRates],
-  )
-  const rowsB = React.useMemo(
-    () => (resultCompareB ? buildResultRows(resultCompareB, settings, vspInRates) : null),
-    [resultCompareB, settings, vspInRates],
-  )
+  const rowsA = React.useMemo(() => {
+    if (!resultCompareA) return null
+    return buildResultRows(resultCompareA, settings, vspInRates)
+  }, [resultCompareA, settings, vspInRates])
+
+  const rowsB = React.useMemo(() => {
+    if (!resultCompareB) return null
+    return buildResultRows(resultCompareB, settings, vspInRates)
+  }, [resultCompareB, settings, vspInRates])
 
   const compareKeys = React.useMemo(() => {
     if (!rowsA || !rowsB) return []
@@ -285,8 +315,9 @@ export default function Results({
                 </label>
               </div>
               <p className="year-compare-hint">
-                Same inputs as the left panel; only <strong>PAP year</strong> differs. KPI above stays the <strong>tax year</strong> from the
-                form ({settings.year}).
+                Both columns use the same <strong>nominal salary (RE4)</strong> implied by your inputs for the explorer tax year (
+                {settings.year}); only each column’s <strong>PAP tariff</strong> differs. Statutory nominal ZVE can still differ
+                slightly between years (allowances, ceilings, VSP). KPI above stays {settings.year} only.
               </p>
             </div>
           )}
@@ -308,6 +339,7 @@ export default function Results({
                   const a = rowAByKey.get(key)
                   const b = rowBByKey.get(key)
                   const label = a?.label ?? b?.label ?? key
+                  const detail = a?.detail ?? b?.detail
                   let delta = '—'
                   if (a && b && a.deltaEur !== null && b.deltaEur !== null) {
                     delta = formatDeltaEur(a.deltaEur, b.deltaEur)
@@ -316,7 +348,16 @@ export default function Results({
                   }
                   return (
                     <tr key={key}>
-                      <th scope="row">{label}</th>
+                      <th scope="row">
+                        {detail ? (
+                          <div className="results-dt-stack">
+                            <span>{label}</span>
+                            <small className="results-row-detail">{detail}</small>
+                          </div>
+                        ) : (
+                          label
+                        )}
+                      </th>
                       <td>{a?.display ?? '—'}</td>
                       <td>{b?.display ?? '—'}</td>
                       <td className="results-compare-delta">{delta}</td>
@@ -330,7 +371,16 @@ export default function Results({
           <dl className="results-dl">
             {rowsSingle.map((row) => (
               <React.Fragment key={row.key}>
-                <dt>{row.label}</dt>
+                <dt>
+                  {row.detail ? (
+                    <div className="results-dt-stack">
+                      <span>{row.label}</span>
+                      <small className="results-row-detail">{row.detail}</small>
+                    </div>
+                  ) : (
+                    row.label
+                  )}
+                </dt>
                 <dd>{row.display}</dd>
               </React.Fragment>
             ))}

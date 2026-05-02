@@ -13,6 +13,7 @@ import {
   formatDestatisBracketLabel,
 } from './destatis_income_tax_brackets_2021'
 import type { PapExplorerSettings } from '../components/TaxInput'
+import { explorerNominalWageEUR } from './explorer_real_income'
 
 /** Publication cohort for embedded Destatis Σ‑Einkommen / Σ‑assessed‑income aggregates. */
 export const DESTATIS_INCOME_TABLE_PUBLICATION_YEAR = 2021
@@ -176,21 +177,26 @@ export const PRIVILEGE_INCOME_SOURCE_LABEL =
 export type TaxOutcomeBand = 'winner' | 'typical' | 'loser'
 
 export function individualBenchmarkGross(settings: PapExplorerSettings): number {
+  const y = settings.year
   if (settings.filing !== 'married') {
-    return Math.max(0, settings.income)
+    return Math.max(0, explorerNominalWageEUR(settings.income, y, settings))
   }
-  const a = Math.max(0, settings.income1)
-  const b = Math.max(0, settings.income2)
+  const a = Math.max(0, explorerNominalWageEUR(settings.income1, y, settings))
+  const b = Math.max(0, explorerNominalWageEUR(settings.income2, y, settings))
   if (a > 0 && b > 0) return (a + b) / 2
   return Math.max(a, b)
 }
 
 /** Total RE4 used like a joint “Einkommen” proxy for bracket placement (married = sum). */
 export function householdGrossForDestatisBracket(settings: PapExplorerSettings): number {
+  const y = settings.year
   if (settings.filing === 'married') {
-    return Math.max(0, settings.income1) + Math.max(0, settings.income2)
+    return (
+      explorerNominalWageEUR(Math.max(0, settings.income1), y, settings) +
+      explorerNominalWageEUR(Math.max(0, settings.income2), y, settings)
+    )
   }
-  return Math.max(0, settings.income)
+  return Math.max(0, explorerNominalWageEUR(settings.income, y, settings))
 }
 
 /**

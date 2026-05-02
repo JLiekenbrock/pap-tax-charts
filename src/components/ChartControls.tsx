@@ -12,6 +12,8 @@ type Props = {
   filing?: PapExplorerSettings['filing']
   marriedSocialSplit?: boolean
   onMarriedSocialSplitChange?: (next: boolean) => void
+  realIncomeMode: boolean
+  onRealIncomeModeChange: (next: boolean) => void
   percentileAxis: boolean
   onPercentileAxisChange: (next: boolean) => void
   vspInRates: boolean
@@ -40,6 +42,8 @@ export default function ChartControls({
   filing = 'single',
   marriedSocialSplit = false,
   onMarriedSocialSplitChange,
+  realIncomeMode,
+  onRealIncomeModeChange,
   percentileAxis,
   onPercentileAxisChange,
   vspInRates,
@@ -75,6 +79,27 @@ export default function ChartControls({
               {mode.label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="chart-controls-row">
+        <div className="chart-controls-label">Salaries</div>
+        <div className="segmented-control" role="group" aria-label="Salary input units (inflation adjustment)">
+          <button
+            type="button"
+            className={!realIncomeMode ? 'active' : ''}
+            onClick={() => onRealIncomeModeChange(false)}
+          >
+            Nominal (tariff €)
+          </button>
+          <button
+            type="button"
+            className={realIncomeMode ? 'active' : ''}
+            onClick={() => onRealIncomeModeChange(true)}
+            title="Konstant‑EUR using Destatis VPI; PAP still evaluates nominal RE4 for the tariff year"
+          >
+            Real (VPI)
+          </button>
         </div>
       </div>
 

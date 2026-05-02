@@ -786,6 +786,19 @@ select:focus {
   color: #4b5563;
 }
 
+.results-dt-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.results-row-detail {
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
 .results-dl dd {
   margin: 0;
   font-weight: 600;

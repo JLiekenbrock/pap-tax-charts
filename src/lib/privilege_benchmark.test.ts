@@ -25,6 +25,7 @@ import {
   formatDestatisBracketLabel,
 } from './destatis_income_tax_brackets_2021'
 import { calculatePapResultFromRE4 } from './pap'
+import { explorerNominalWageEUR } from './explorer_real_income'
 import type { PapExplorerSettings } from '../components/TaxInput'
 
 const baseExplorer: PapExplorerSettings = {
@@ -52,6 +53,8 @@ const baseExplorer: PapExplorerSettings = {
   pkpv: 0,
   pkpvagz: 0,
   proMode: false,
+  realIncomeMode: false,
+  realIncomeBaseYear: 2021,
   beamtenMode: false,
 }
 
@@ -164,6 +167,21 @@ describe('computePrivilegeSnapshot (bracket peers)', () => {
     }
     expect(householdGrossForDestatisBracket(s)).toBe(110_000)
     expect(destatisIncomeTaxBracketForApproxEinkommen(110_000)?.lo).toBe(70_000)
+  })
+
+  it('sums nominal RE4 equivalents when Konstant‑EUR mode is on', () => {
+    const s: PapExplorerSettings = {
+      ...baseExplorer,
+      realIncomeMode: true,
+      realIncomeBaseYear: 2021,
+      filing: 'married',
+      income1: 55_000,
+      income2: 55_000,
+      income: 110_000,
+    }
+    const n1 = explorerNominalWageEUR(s.income1, s.year, s)
+    const n2 = explorerNominalWageEUR(s.income2, s.year, s)
+    expect(householdGrossForDestatisBracket(s)).toBe(n1 + n2)
   })
 
   it('returns payroll and bracket peer rate', () => {

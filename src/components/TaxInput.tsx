@@ -1,5 +1,7 @@
 import React from 'react'
 import { PapOptions, jaegFor } from '../lib/pap'
+import { REAL_INCOME_PRICE_BASE_YEAR_CHOICES, nominalEuroFromRealEuro, realEuroFromNominalEuro, type RealIncomePriceBaseYear } from '../lib/germany_vpi_annual'
+import { explorerSettingsAfterRealIncomeToggle } from '../lib/explorer_real_income'
 import { StklDerivation } from '../lib/stkl'
 
 // PapOptions has three optional pro-mode override fields (bbgKvPv,
@@ -13,6 +15,10 @@ export type PapExplorerSettings = CorePapSettings & {
   income1: number
   income2: number
   investmentIncome: number
+  /** Salary inputs approximate Konstant‑EUR at {@link realIncomeBaseYear}; PAP still evaluates nominal RE4 for {@link PapExplorerSettings.year}. */
+  realIncomeMode: boolean
+  /** VPI consumer price base (Destatis JD 2021/2025; 2026 provisional in app index). */
+  realIncomeBaseYear: RealIncomePriceBaseYear
   includeKindergeld: boolean
   kindergeldChildren: number
   rangeMin: number
@@ -169,6 +175,37 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
     })
   }
 
+  const salaryFieldSuffix = settings.realIncomeMode ? `Konstant‑${settings.realIncomeBaseYear} €` : 'EUR'
+
+  const reExpressWagesForPriceBase = (nextBase: RealIncomePriceBaseYear): Partial<PapExplorerSettings> => {
+    if (!settings.realIncomeMode) return { realIncomeBaseYear: nextBase }
+    const y = settings.year
+    const oldBase = settings.realIncomeBaseYear
+    const toNom = (stored: number) => nominalEuroFromRealEuro(Math.max(0, stored), y, oldBase)
+    const toStoredAt = (nom: number, base: RealIncomePriceBaseYear) =>
+      realEuroFromNominalEuro(Math.max(0, nom), y, base)
+    if (settings.filing === 'married') {
+      const n1 = toNom(settings.income1)
+      const n2 = toNom(settings.income2)
+      const s1 = toStoredAt(n1, nextBase)
+      const s2 = toStoredAt(n2, nextBase)
+      return {
+        realIncomeBaseYear: nextBase,
+        income1: s1,
+        income2: s2,
+        income: s1 + s2,
+      }
+    }
+    return {
+      realIncomeBaseYear: nextBase,
+      income: toStoredAt(toNom(settings.income), nextBase),
+    }
+  }
+
+  const setRealIncomeMode = (enabled: boolean) => {
+    onChange(explorerSettingsAfterRealIncomeToggle(enabled, settings))
+  }
+
   return (
     <aside className="control-panel">
       <div className="control-section">
@@ -185,7 +222,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
           max={settings.rangeMax}
           step={100}
           onCommit={(value) => update('income', value)}
-          suffix="EUR"
+          suffix={salaryFieldSuffix}
         />
         {settings.filing === 'married' && (
           <div className="income-split">
@@ -201,7 +238,7 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               max={settings.rangeMax}
               step={100}
               onCommit={(value) => updateIncomePart('income1', value)}
-              suffix="EUR"
+              suffix={salaryFieldSuffix}
             />
             <label>
               Income 2
@@ -215,9 +252,41 @@ export default function TaxInput({ settings, onChange, stklDerivation }: Props) 
               max={settings.rangeMax}
               step={100}
               onCommit={(value) => updateIncomePart('income2', value)}
-              suffix="EUR"
+              suffix={salaryFieldSuffix}
             />
           </div>
+        )}
+        <label className="checkbox-row">
+          <input type="checkbox" checked={settings.realIncomeMode} onChange={(e) => setRealIncomeMode(e.target.checked)} />
+          Real wages (Konstant‑EUR/VPI){' '}
+          <span style={{ fontSize: '0.78rem', color: '#64748B' }}>— matches chart toolbar</span>
+        </label>
+        {settings.realIncomeMode && (
+          <>
+            <label>
+              Konstant‑Preisbasis
+              <select
+                value={settings.realIncomeBaseYear}
+                onChange={(e) =>
+                  onChange({
+                    ...settings,
+                    ...reExpressWagesForPriceBase(Number(e.target.value) as RealIncomePriceBaseYear),
+                  })
+                }
+              >
+                {REAL_INCOME_PRICE_BASE_YEAR_CHOICES.map((by) => (
+                  <option key={by} value={by}>
+                    {by}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="pro-mode-hint" style={{ fontSize: '0.82rem' }}>
+              Wage fields use the German consumer price index (Destatis VPI, annual averages; 2026 is a provisional blend in
+              this app). Investment income stays nominal for the tariff year. PAP still runs on nominal RE4 for{' '}
+              {settings.year}.
+            </p>
+          </>
         )}
       </div>
 

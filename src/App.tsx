@@ -16,6 +16,11 @@ import {
   MAX_CHART_SALARY_EUR,
   paddedChartMaxForReichenZone,
 } from './lib/pap'
+import {
+  explorerNominalWageEUR,
+  explorerSettingsAfterRealIncomeToggle,
+  explorerStoredWageFromNominalEUR,
+} from './lib/explorer_real_income'
 import { deriveStkl } from './lib/stkl'
 import { DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024 } from './lib/privilege_benchmark'
 
@@ -39,25 +44,36 @@ function buildSeries(settings: PapExplorerSettings): PapCalculationResult[] {
       : Math.min(SERIES_POINTS_MAX, Math.max(SERIES_POINTS_MIN, Math.ceil(span / 20_000)))
   const step = pointCount <= 1 ? 0 : span / (pointCount - 1)
   const opts = toPapOptions(settings)
+  const y = settings.year
+  const nominalRef1 = explorerNominalWageEUR(Math.max(0, settings.income1), y, settings)
+  const nominalRef2 = explorerNominalWageEUR(Math.max(0, settings.income2), y, settings)
 
   return Array.from({ length: pointCount }, (_, index) => {
-    const income = pointCount <= 1 ? effMin : Math.round(effMin + step * index)
+    const storedSweep = pointCount <= 1 ? effMin : Math.round(effMin + step * index)
+    const nominalSweep = explorerNominalWageEUR(storedSweep, y, settings)
     if (settings.filing === 'married') {
-      return calculatePapForMarriedHouseholdTotal(income, settings.income1, settings.income2, opts)
+      return calculatePapForMarriedHouseholdTotal(nominalSweep, nominalRef1, nominalRef2, opts)
     }
-    return calculatePapResultFromRE4(income, opts)
+    return calculatePapResultFromRE4(nominalSweep, opts)
   })
 }
 
-function papSnapshotAtIncome(settings: PapExplorerSettings, year: number): PapCalculationResult {
-  const opts = toPapOptions({ ...settings, year })
+/**
+ * Tariff‑year comparison: identical nominal wage RE4 for every column (anchor = explorer {@link PapExplorerSettings.year});
+ * each column evaluates PAP rules for its own tariff year only.
+ */
+function papSnapshotAtIncome(settings: PapExplorerSettings, tariffYear: number): PapCalculationResult {
+  const explorerYear = settings.year
+  const opts = toPapOptions({ ...settings, year: tariffYear })
   if (settings.filing === 'married') {
-    return calculatePapResultFromRE4(settings.income1, {
-      ...opts,
-      partnerRe4: settings.income2,
-    })
+    const n1 = explorerNominalWageEUR(Math.max(0, settings.income1), explorerYear, settings)
+    const n2 = explorerNominalWageEUR(Math.max(0, settings.income2), explorerYear, settings)
+    return calculatePapResultFromRE4(n1, { ...opts, partnerRe4: n2 })
   }
-  return calculatePapResultFromRE4(settings.income, opts)
+  return calculatePapResultFromRE4(
+    explorerNominalWageEUR(Math.max(0, settings.income), explorerYear, settings),
+    opts,
+  )
 }
 
 const DEFAULT_SETTINGS: PapExplorerSettings = {
@@ -84,6 +100,8 @@ const DEFAULT_SETTINGS: PapExplorerSettings = {
   pkv: 0,
   pkpv: 0,
   pkpvagz: 0,
+  realIncomeMode: false,
+  realIncomeBaseYear: 2021,
   proMode: false,
   beamtenMode: false,
 }
@@ -114,12 +132,16 @@ export default function App() {
   )
 
   const normalizedSettings = React.useMemo(() => {
+    const y = settings.year
     const income1 = Math.max(0, settings.income1)
     const income2 = Math.max(0, settings.income2)
     const filingIncome = settings.filing === 'married' ? income1 + income2 : Math.max(0, settings.income)
-    const highestIncome = Math.max(filingIncome, income1 + income2, 10000)
+    const highestIncomeStored = Math.max(filingIncome, income1 + income2, 10_000)
+    const nominal1 = explorerNominalWageEUR(income1, y, settings)
+    const nominal2 = explorerNominalWageEUR(income2, y, settings)
+    const nominalHighest = explorerNominalWageEUR(highestIncomeStored, y, settings)
     const rangeMin = 0
-    const rangeMaxBase = Math.max(30000, Math.ceil((highestIncome * 1.5 + 10000) / 1000) * 1000)
+    const rangeMaxBaseNominal = Math.max(30000, Math.ceil((nominalHighest * 1.5 + 10000) / 1000) * 1000)
     const papOptsPreRange = toPapOptions({
       ...settings,
       stkl: stklDerivation.stkl,
@@ -128,14 +150,17 @@ export default function App() {
     })
     const reichenSweepMin = findMinGrossPositiveReichen(
       papOptsPreRange,
-      settings.filing === 'married'
-        ? { income1: Math.max(0, settings.income1), income2: Math.max(0, settings.income2) }
-        : undefined,
+      settings.filing === 'married' ? { income1: nominal1, income2: nominal2 } : undefined,
     )
     const reichenStretch =
       reichenSweepMin != null ? paddedChartMaxForReichenZone(reichenSweepMin, 5000) : 0
-    const rangeMaxUncapped = Math.max(rangeMaxBase, DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024, reichenStretch)
-    const rangeMax = Math.min(rangeMaxUncapped, MAX_CHART_SALARY_EUR)
+    const rangeMaxUncappedNominal = Math.max(
+      rangeMaxBaseNominal,
+      DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024,
+      reichenStretch,
+    )
+    const rangeMaxNominal = Math.min(rangeMaxUncappedNominal, MAX_CHART_SALARY_EUR)
+    const rangeMax = explorerStoredWageFromNominalEUR(rangeMaxNominal, y, settings)
     const income = clamp(filingIncome, rangeMin, rangeMax)
     const kindergeldChildren = Math.max(0, Math.floor(settings.kindergeldChildren))
     return {
@@ -160,13 +185,19 @@ export default function App() {
   const papOpts = React.useMemo(() => toPapOptions(normalizedSettings), [normalizedSettings])
 
   const current = React.useMemo(() => {
+    const y = normalizedSettings.year
     if (normalizedSettings.filing === 'married') {
-      return calculatePapResultFromRE4(normalizedSettings.income1, {
+      const n1 = explorerNominalWageEUR(normalizedSettings.income1, y, normalizedSettings)
+      const n2 = explorerNominalWageEUR(normalizedSettings.income2, y, normalizedSettings)
+      return calculatePapResultFromRE4(n1, {
         ...papOpts,
-        partnerRe4: normalizedSettings.income2,
+        partnerRe4: n2,
       })
     }
-    return calculatePapResultFromRE4(normalizedSettings.income, papOpts)
+    return calculatePapResultFromRE4(
+      explorerNominalWageEUR(normalizedSettings.income, y, normalizedSettings),
+      papOpts,
+    )
   }, [normalizedSettings, papOpts])
   const series = React.useMemo(() => buildSeries(normalizedSettings), [normalizedSettings])
 
@@ -211,6 +242,13 @@ export default function App() {
     setCompareYearB(nextB)
   }, [compareYearA, compareYearB])
 
+  const onExplorerRealIncomeModeChange = React.useCallback(
+    (enabled: boolean) => {
+      setSettings(explorerSettingsAfterRealIncomeToggle(enabled, normalizedSettings))
+    },
+    [normalizedSettings],
+  )
+
   return (
     <main className="app-shell">
       <section className="app-header">
@@ -246,6 +284,8 @@ export default function App() {
             onVspInCompositionChange={setVspInComposition}
             investmentInRates={investmentInRates}
             onInvestmentInRatesChange={setInvestmentInRates}
+            realIncomeMode={normalizedSettings.realIncomeMode}
+            onRealIncomeModeChange={onExplorerRealIncomeModeChange}
           />
           <TaxChart
             series={series}

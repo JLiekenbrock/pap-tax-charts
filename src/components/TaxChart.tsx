@@ -35,6 +35,7 @@ import {
   marginalReichenPayrollPercent,
 } from '../lib/rates'
 import { PapExplorerSettings } from './TaxInput'
+import { explorerNominalWageEUR, explorerSalaryAxisEUR } from '../lib/explorer_real_income'
 import {
   DESTATIS_CHART_INCOME_RUG_MARKERS_2024,
   DESTATIS_FULLTIME_WAGE_P99_MAX_EUR_2024,
@@ -53,9 +54,23 @@ export function toPapOptions(settings: PapExplorerSettings): PapOptions {
     rangeMax: _rangeMax,
     includeKindergeld: _includeKindergeld,
     kindergeldChildren: _kindergeldChildren,
+    realIncomeMode: _rim,
+    realIncomeBaseYear: _riby,
+    proMode: _proMode,
+    beamtenMode: _beamtenMode,
     ...rest
   } = settings
-  void _income; void _income1; void _income2; void _rangeMin; void _rangeMax; void _includeKindergeld; void _kindergeldChildren
+  void _income;
+  void _income1;
+  void _income2;
+  void _rangeMin;
+  void _rangeMax;
+  void _includeKindergeld;
+  void _kindergeldChildren;
+  void _rim;
+  void _riby;
+  void _proMode;
+  void _beamtenMode
   return rest
 }
 
@@ -272,15 +287,28 @@ export default function TaxChart({
     if (!percentileScaleXActive) return { minP: 0, maxP: 100 }
     const lo = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
     const hi = Math.max(lo, settings.rangeMax)
-    const minP = individualIncomePercentileDeStatis(lo)
-    const maxP = individualIncomePercentileDeStatis(hi)
+    const yAxis = settings.year
+    const minP = individualIncomePercentileDeStatis(explorerNominalWageEUR(lo, yAxis, settings))
+    const maxP = individualIncomePercentileDeStatis(explorerNominalWageEUR(hi, yAxis, settings))
     return minP <= maxP ? { minP, maxP } : { minP: maxP, maxP: minP }
-  }, [percentileScaleXActive, settings.rangeMin, settings.rangeMax])
+  }, [percentileScaleXActive, settings])
+
+  const salaryLinearAxisTitle = React.useMemo(
+    () =>
+      settings.realIncomeMode
+        ? `Salary RE4 (${settings.realIncomeBaseYear} Konstant‑EUR; PAP tariff ${settings.year} nominal)`
+        : 'Salary income / RE4 (EUR)',
+    [settings.realIncomeMode, settings.realIncomeBaseYear, settings.year],
+  )
 
   const salaryToLineDatasetX = React.useCallback(
-    (salaryEuro: number): number =>
-      percentileScaleXActive ? individualIncomePercentileDeStatis(Math.max(0, salaryEuro)) : salaryEuro,
-    [percentileScaleXActive],
+    (nominalSalaryRe4: number): number => {
+      const yAxis = settings.year
+      return percentileScaleXActive
+        ? individualIncomePercentileDeStatis(Math.max(0, nominalSalaryRe4))
+        : explorerSalaryAxisEUR(nominalSalaryRe4, yAxis, settings)
+    },
+    [percentileScaleXActive, settings],
   )
   const isCategoryX = mode === 'stacked' || mode === 'percent'
   const lineMetrics = React.useMemo(() => {
@@ -349,11 +377,27 @@ export default function TaxChart({
     return Math.ceil((raw * 1.03) / 5000) * 5000
   }, [settings.rangeMax, settings.investmentIncome])
 
+  const stackedCategoryAxisLabels = React.useMemo(
+    () =>
+      mode === 'stacked' || mode === 'percent'
+        ? series.map((p) => explorerSalaryAxisEUR(p.income, settings.year, settings))
+        : null,
+    [mode, series, settings],
+  )
+
   const categoryIncomesForRugs = React.useMemo(
     () => (mode === 'stacked' || mode === 'percent' ? series.map((p) => p.income) : null),
     [mode, series],
   )
 
+  const nominalMarriedChartRef = React.useMemo((): { income1: number; income2: number } | undefined => {
+    if (settings.filing !== 'married') return undefined
+    const yAxis = settings.year
+    return {
+      income1: explorerNominalWageEUR(settings.income1, yAxis, settings),
+      income2: explorerNominalWageEUR(settings.income2, yAxis, settings),
+    }
+  }, [settings])
   const clipXMinEur = Math.max(0, Math.min(settings.rangeMin, settings.rangeMax))
   const clipXMaxEur = Math.max(clipXMinEur, settings.rangeMax)
 
@@ -375,9 +419,14 @@ export default function TaxChart({
     [incomePercentilePlugin, selectedIncomePlugin],
   )
 
+  const nominalTargetSweep = explorerNominalWageEUR(currentIncome, settings.year, settings)
   let selectedIndex = 0
   for (let i = 0; i < series.length; i++) {
-    if (Math.abs(series[i].income - currentIncome) < Math.abs(series[selectedIndex]?.income - currentIncome)) selectedIndex = i
+    if (
+      Math.abs(series[i].income - nominalTargetSweep) <
+      Math.abs(series[selectedIndex]?.income - nominalTargetSweep)
+    )
+      selectedIndex = i
   }
   const ratesSeries = React.useMemo(() => {
     if (mode !== 'rates' && mode !== 'decomposition') return series
@@ -391,48 +440,48 @@ export default function TaxChart({
     const targetPoints = 1200
     const interval = span <= 0 ? 1000 : Math.max(1000, Math.ceil(span / targetPoints))
     const opts = toPapOptions(settings)
-    const marriedChartRef =
-      settings.filing === 'married'
-        ? { income1: settings.income1, income2: settings.income2 }
-        : undefined
+    const yAxis = settings.year
+    const nominalMaxSweep = explorerNominalWageEUR(maxIncome, yAxis, settings)
     const points: PapCalculationResult[] = []
     for (let income = minIncome; income <= maxIncome; income += interval) {
       points.push(
-        marriedChartRef
-          ? calculatePapForMarriedHouseholdTotal(income, marriedChartRef.income1, marriedChartRef.income2, opts)
-          : calculatePapResultFromRE4(income, opts),
+        nominalMarriedChartRef
+          ? calculatePapForMarriedHouseholdTotal(
+              explorerNominalWageEUR(income, yAxis, settings),
+              nominalMarriedChartRef.income1,
+              nominalMarriedChartRef.income2,
+              opts,
+            )
+          : calculatePapResultFromRE4(explorerNominalWageEUR(income, yAxis, settings), opts),
       )
     }
     const last = points[points.length - 1]
-    if (!last || last.income !== maxIncome) {
+    if (!last || Math.abs(last.income - nominalMaxSweep) > 1) {
       points.push(
-        marriedChartRef
-          ? calculatePapForMarriedHouseholdTotal(maxIncome, marriedChartRef.income1, marriedChartRef.income2, opts)
-          : calculatePapResultFromRE4(maxIncome, opts),
+        nominalMarriedChartRef
+          ? calculatePapForMarriedHouseholdTotal(
+              nominalMaxSweep,
+              nominalMarriedChartRef.income1,
+              nominalMarriedChartRef.income2,
+              opts,
+            )
+          : calculatePapResultFromRE4(nominalMaxSweep, opts),
       )
     }
     return points
-  }, [mode, series.length, settings, usesLineScatterX])
+  }, [mode, series.length, settings, usesLineScatterX, nominalMarriedChartRef])
 
   const decompositionRates = React.useMemo(() => {
     if (mode !== 'decomposition') return [] as MarginalDecomposition[]
     const opts = toPapOptions(settings)
-    const marriedChartRef =
-      settings.filing === 'married'
-        ? { income1: settings.income1, income2: settings.income2 }
-        : undefined
     return ratesSeries.map((point) =>
-      marginalDecomposition(point.income, opts, rateBasis, { marriedChartRef }),
+      marginalDecomposition(point.income, opts, rateBasis, { marriedChartRef: nominalMarriedChartRef }),
     )
-  }, [mode, ratesSeries, settings, rateBasis])
+  }, [mode, ratesSeries, settings, rateBasis, nominalMarriedChartRef])
 
   const marginalRates = React.useMemo(() => {
     if (mode !== 'rates') return [] as (number | null)[]
     const opts = toPapOptions(settings)
-    const marriedChartRef =
-      settings.filing === 'married'
-        ? { income1: settings.income1, income2: settings.income2 }
-        : undefined
     // Use null for points with too small a denominator so the chart skips them
     // instead of showing huge spikes (same logic as ratePercent).
     const raw = ratesSeries.map((point) => {
@@ -440,7 +489,7 @@ export default function TaxChart({
       if (denom < 1000) return null
       return marginalTaxRate(point.income, opts, rateBasis, {
         includeVspInRate: vspInRates,
-        marriedChartRef,
+        marriedChartRef: nominalMarriedChartRef,
       })
     })
     // Centered moving average (window=5) to smooth out single-point spikes caused
@@ -458,21 +507,17 @@ export default function TaxChart({
       }
       return count > 0 ? sum / count : null
     })
-  }, [mode, ratesSeries, settings, rateBasis, vspInRates])
+  }, [mode, ratesSeries, settings, rateBasis, vspInRates, nominalMarriedChartRef])
 
   const marginalReichenPayrollRates = React.useMemo(() => {
     if (mode !== 'rates') return [] as (number | null)[]
     const opts = toPapOptions(settings)
-    const marriedChartRef =
-      settings.filing === 'married'
-        ? { income1: settings.income1, income2: settings.income2 }
-        : undefined
     const raw = ratesSeries.map((point) => {
       const denom = rateBasis === 'zve' ? point.zve : point.income
       if (denom < 1000) return null
       return marginalReichenPayrollPercent(point.income, opts, rateBasis, {
         delta: 500,
-        marriedChartRef,
+        marriedChartRef: nominalMarriedChartRef,
       })
     })
     const window = 2
@@ -488,10 +533,10 @@ export default function TaxChart({
       }
       return count > 0 ? sum / count : null
     })
-  }, [mode, ratesSeries, settings, rateBasis])
+  }, [mode, ratesSeries, settings, rateBasis, nominalMarriedChartRef])
 
   const data = {
-    labels: mode === 'stacked' || mode === 'percent' ? series.map((point) => point.income) : undefined,
+    labels: stackedCategoryAxisLabels ?? undefined,
     datasets: mode === 'percent'
       ? cashStackParts.map((part): ChartDataset<'bar'> => ({
           label: part.label,
@@ -705,7 +750,9 @@ export default function TaxChart({
         income: currentIncome,
         selectedIndex: mode === 'stacked' || mode === 'percent' ? selectedIndex : undefined,
         selectedXCoordinate: percentileScaleXActive
-          ? individualIncomePercentileDeStatis(Math.max(0, currentIncome))
+          ? individualIncomePercentileDeStatis(
+              Math.max(0, explorerNominalWageEUR(currentIncome, settings.year, settings)),
+            )
           : undefined,
       },
       legend: { position: 'bottom' as const },
@@ -739,10 +786,10 @@ export default function TaxChart({
         title: {
           display: true,
           text: isCategoryX
-            ? 'Salary income / RE4 (EUR)'
+            ? salaryLinearAxisTitle
             : percentileScaleXActive
               ? `Destatis FT wage percentile (rank p); horizontal spacing uniform in percentile — ${PRIVILEGE_INCOME_SOURCE_LABEL}`
-              : 'Salary income / RE4 (EUR)',
+              : salaryLinearAxisTitle,
         },
         stacked: mode === 'stacked' || mode === 'percent',
         min: isCategoryX
@@ -761,7 +808,10 @@ export default function TaxChart({
               autoSkip: true,
               autoSkipPadding: 12,
               callback: (value: string | number) => {
-                const tickValue = series[Number(value)]?.income ?? value
+                const idx = Number(value)
+                const lbl = stackedCategoryAxisLabels?.[idx]
+                if (lbl != null && Number.isFinite(lbl)) return Number(lbl).toLocaleString()
+                const tickValue = series[idx]?.income ?? value
                 return Number(tickValue).toLocaleString()
               },
             }

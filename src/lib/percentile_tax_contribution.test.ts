@@ -31,6 +31,8 @@ const minimalExplorer = (partial: Partial<PapExplorerSettings> = {}): PapExplore
     pkpv: 0,
     pkpvagz: 0,
     proMode: false,
+    realIncomeMode: false,
+    realIncomeBaseYear: 2021,
     beamtenMode: false,
     ...partial,
   }) as PapExplorerSettings
